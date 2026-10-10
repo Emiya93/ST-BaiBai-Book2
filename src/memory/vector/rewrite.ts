@@ -26,9 +26,9 @@ import { fetchWithTimeoutRetry } from './embed';
 
 /** rewrite 模型最多取几条 query(对齐 Horae) */
 const MAX_QUERIES = 6;
-/** INTENT 描述限长(06 提示词允许最多 360 字符) */
+/** INTENT 描述限长(原版提示词要求 2–4 句话,这里给个宽松上限兜底,防极端返回) */
 const MAX_INTENT_LEN = 360;
-/** 单条 query 限长(06 提示词要求不超过 180 字符,这里留余量) */
+/** 单条 query 限长 */
 const MAX_QUERY_LEN = 220;
 
 export interface RewriteResult {
@@ -98,7 +98,7 @@ function buildMessages(chat: STMessage[]): ChatMsg[] {
   const cut = findSnapshotCut(chat, windowStart);
 
   // 开头唯一 system:破限(NVWA 核心)+ 系统提示词 +(可选)历史剧情摘要,合并为一条,
-  // 既保证 system 只出现在开头,也让破限处于请求最前。核心不再写进 06 正文,统一由破限位提供
+  // 既保证 system 只出现在开头,也让破限处于请求最前。核心不写进重写正文,统一由破限位提供
   // (自定义优先,留空用内置 NVWA 核心)。
   const history = renderHistoryNodes(selectHistoryNodesBefore(memory.summaries, chat, windowStart));
   const body = history ? `${QUERY_REWRITE_SYSTEM}\n\n[历史剧情摘要]\n${history}` : QUERY_REWRITE_SYSTEM;

@@ -242,12 +242,13 @@ describe('jailbreak, briefing and query rewrite', () => {
     expect(buildCharCardSystem('SENT')).toBe(section('〔角色卡内容占位〕', 'SENT'));
   });
 
-  it('uses the gap-driven query rewrite with the space-fact boundary', () => {
+  it('keeps the original 5-query rewrite prompt (复刻 Horae 的用户优化版)', () => {
+    expect(QUERY_REWRITE_SYSTEM).toContain('你是角色扮演续写场景中的上下文规划器');
+    // 原版要求“固定生成5条查询”——多路召回 + RRF 融合靠的就是这 5 条覆盖面
+    expect(QUERY_REWRITE_SYSTEM).toContain('固定生成5条查询');
     expect(QUERY_REWRITE_SYSTEM).toContain('INTENT');
-    expect(QUERY_REWRITE_SYSTEM).toContain('1—3条查询');
-    expect(QUERY_REWRITE_SYSTEM).toContain('【空间事实边界】');
-    // 核心由请求开头的破限位提供,06 正文不再重复携带
-    expect(QUERY_REWRITE_SYSTEM).not.toContain('<nvwa_standalone_core>');
+    expect(QUERY_REWRITE_SYSTEM).toContain('示例1:');
+    expect(QUERY_REWRITE_TAIL).toContain('恰好5行Q');
     expect(QUERY_REWRITE_TAIL).toContain('INTENT');
   });
 
