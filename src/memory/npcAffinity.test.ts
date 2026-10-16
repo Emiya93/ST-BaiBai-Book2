@@ -387,6 +387,7 @@ describe('技能台账与角色技能', () => {
     settings.apiSettings.skillsEnabled = enabled;
     settings.apiSettings.injection.skills = false;
     const next = message(); delete next.extra!.bbs2_leaf;
+    next.mes = '主角熟练施展闪烁穿过街道；艾琳说自己以前就会寒箭，并当场施展。';
     const chat = [message(known()), next];
     useChat(chat);
     vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
@@ -396,6 +397,8 @@ describe('技能台账与角色技能', () => {
     }));
     await summarizeFloor(1);
     const prompt = vi.mocked(client.requestViaMainApi).mock.calls[0][0].map(m => m.content).join('\n');
+    expect(prompt).toContain(next.mes.split('；')[0]);
+    expect(prompt.includes('台账中缺少的已有技能也用 add')).toBe(enabled);
     expect(prompt.includes('星火术')).toBe(enabled);
     expect(prompt.includes('霜盾')).toBe(enabled);
     expect(memory.skills.some(s => s.name === '闪烁')).toBe(enabled);

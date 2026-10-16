@@ -674,12 +674,13 @@ const SKILLS_FIELD = `"skills": { "add": [{ "name": "技能名", "desc": "效果
 
 const SKILLS_RULE = `【技能规则】
 最终 JSON 根对象可按需增加 ${SKILLS_FIELD}。stateChanges 也允许列出 "skills"，只列实际输出的字段。
-skills 只记录主角已经明确掌握的技能、法术、功法或能力，不把物品、临时增益、学习计划或他人技能当成主角技能。不从职业、一次动作或世界常识推测技能，不虚构等级、效果、消耗或冷却。
-首次明确掌握用 add，升级或效果改变用 update，明确遗忘或永久失去用 remove；仅使用技能不代表遗忘或消耗技能，无变化省略。匹配已有技能原名，描述保留仍有效的效果与使用限制。
-主要角色的技能单独写在 npcs.add/update 条目的 skills 字符串中，包含该角色目前全部已知技能及简述；不混入主角 skills 清单，不为记录技能降低 NPC 准入门槛。新标记 important:true 的角色也可同步填写。
+skills 记录主角有明确证据掌握的技能、法术、功法或能力，包含新学会及原本就会但尚未登记的技能。本轮正文、明确人物设定说明其本来就会或过去学过，或本人实际施展了可辨识的技能，都可作为补录依据；不要求出现“学会”“领悟”等字样，也不要求本轮刚获得技能。首次见到使用记录不等于本轮新学会，summary 应如实描述使用或揭示已有能力。
+先对照技能台账：台账中缺少的已有技能也用 add；已有技能首次明确展示新的效果、用途或限制，或确有升级、效果变化时用 update；明确遗忘或永久失去才用 remove。已登记且无新信息的普通使用省略，不重复添加。匹配已有技能原名，更新描述保留仍有效的效果与使用限制。
+不把物品、借助道具的临时效果、临时增益、学习计划、旁观他人施术或尚未成功的练习当成本人已经掌握。不从职业、普通动作或世界常识自行发明技能，不虚构名字、等级、效果、消耗或冷却；一次有明确归属的实际施展可以证明已展现的能力，普通挥拳、奔跑等动作不能据此另造技能。完成更复杂目标失败，不否认已经明确施展的基础技能；只记录证实的能力范围。
+主要角色同样适用补录规则，技能单独写在 npcs.add/update 条目的 skills 字符串中，包含该角色目前全部已知技能及简述；不混入主角 skills 清单，不为记录技能降低 NPC 准入门槛。新标记 important:true 的角色也可同步填写。
 NPC skills 省略=保持，空字符串=明确清空；更新时保留未变的已知技能，不因本楼没用到、离场或时间跳跃删除或推演新技能。`;
 
-const SKILL_FACT_PRESERVATION = '【技能事实保留】保留会影响后续剧情的技能习得、升级、明确失去及关键限制，明确所属人物、证据来源和确定程度；不从职业或动作推断新技能，不把使用技能写成技能消失。仅按本任务输出摘要，不额外输出技能状态增量。';
+const SKILL_FACT_PRESERVATION = '【技能事实保留】保留会影响后续剧情的技能习得、既有技能的明确说明与实际施展、升级、明确失去及关键限制，明确所属人物、证据来源和确定程度；原本就会的技能首次展现不能改写成此时刚学会，不从职业或普通动作臆造技能，不把使用技能写成技能消失。仅按本任务输出摘要，不额外输出技能状态增量。';
 
 /** 主角当前客观档案。字段始终全量展示,不参与 NPC 的在场分档。年龄显示带锚点(勿再重复记录)。 */
 export function fmtProtagonist(protagonist: MemProtagonist): string {
@@ -1033,7 +1034,8 @@ export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string
   const prompt = fill(custom, macros);
   const supplements = [PROTAGONIST_PROTOCOL_SUPPLEMENT, RULE_ABSOLUTE_TIME_LANGUAGE, SCENE_FOCUS_PROTOCOL_SUPPLEMENT];
   supplements.push(LIFE_DETAILS_PROTOCOL_SUPPLEMENT);
-  if (apiSettings.skillsEnabled && !prompt.includes('【技能规则】')) supplements.push(SKILLS_RULE);
+  // 已保存模板可能含旧技能规则；只有完整包含现行协议时才省略补充，避免旧门槛继续阻止补录。
+  if (apiSettings.skillsEnabled && !prompt.includes(SKILLS_RULE)) supplements.push(SKILLS_RULE);
   if (!prompt.includes('【内心好感与外在态度规则】')) supplements.push(RULE_NPC_AFFINITY);
   // 关系线保留:自定义模板未带入时补上,保证慢热互动不在摘要/压缩里被删空(与内置模板同源)
   if (!prompt.includes('【关系线保留】')) supplements.push(RULE_RELATION_MOMENTUM);
@@ -1204,7 +1206,7 @@ export const THINKING_CHECKLIST = protocolSection('THINKING_CHECKLIST');
 /** 与批量清单一样在发送前展开宏,不把占位符留给渠道处理。 */
 export function buildSummaryThinking(user: string): string {
   return fill(THINKING_CHECKLIST, { user: user || '主角' })
-    + (apiSettings.skillsEnabled ? '\n核对主角技能及主要角色 skills：只记录明确的习得、升级或失去，保持人物归属与仍有效的技能和限制；有变化同步对应增量和 stateChanges。' : '');
+    + (apiSettings.skillsEnabled ? '\n核对主角技能及主要角色 skills：检查本轮明确说明或实际施展、已掌握但未登记的技能并补录，不等待“学会”字样；区分已有能力首次展现与本轮新习得。新确认效果、升级或明确失去时更新，保持人物归属与仍有效的技能和限制；有记录变化同步对应增量和 stateChanges。' : '');
 }
 
 /* ============ 向量召回:查询重写(Query Rewrite) ============ */

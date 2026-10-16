@@ -56,7 +56,7 @@ function removeSkill(skill: MemSkill) {
         </div>
         <p class="bbs-skill-desc">{{ skill.desc || '暂无技能说明，可点击编辑补充。' }}</p>
       </article>
-      <p v-if="!memory.skills.length" class="bbs-field-hint">尚未记录技能。剧情中明确掌握的技能会在摘要后登记，也可手动添加。</p>
+      <p v-if="!memory.skills.length" class="bbs-field-hint">尚未记录技能。剧情中明确说明已掌握或实际施展的技能会在摘要后登记，也可手动添加。</p>
     </div>
     <ModalMask :open="!!editing" @close="editing = null">
       <div v-if="editing" class="bbs-modal" role="dialog" aria-modal="true" aria-label="编辑技能">

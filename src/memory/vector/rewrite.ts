@@ -106,7 +106,7 @@ function buildMessages(chat: STMessage[]): ChatMsg[] {
   const body = history ? `${QUERY_REWRITE_SYSTEM}\n\n[历史剧情摘要]\n${history}` : QUERY_REWRITE_SYSTEM;
   const jb = apiSettings.prompts.jailbreak.trim() || JAILBREAK_PROMPT;
   const systemContent = `${jb}\n\n${body}`
-    + (apiSettings.skillsEnabled ? '\n技能相关续写需要时，检索对应人物的技能习得、升级、效果与使用限制；按人物区分，不臆测未掌握的技能。' : '');
+    + (apiSettings.skillsEnabled ? '\n技能相关续写需要时，检索对应人物的技能习得、既有技能的明确说明与实际施展、升级、效果与使用限制；不只查找“学会”事件，按人物区分，不臆测未掌握的技能。' : '');
   const messages: ChatMsg[] = [{ role: 'system', content: systemContent }];
 
   // 平铺窗口对话(纯 user/assistant),记录原 msgIndex 以定位快照插入点

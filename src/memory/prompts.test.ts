@@ -76,6 +76,21 @@ describe('技能提示词开关', () => {
     skills: [{ name: '星火术', desc: '消耗三点法力，照亮道路' }],
     npcs: [{ name: '旅伴', important: true, skills: '霜盾：抵挡一次攻击' }],
   };
+  it.each(['', 'CUSTOM {{content}}', '【技能规则】首次明确掌握用 add，没有习得事件就不更新。\n{{content}}'])('内置及已保存自定义模板允许补录明确展现的既有技能：%s', template => {
+    apiSettings.skillsEnabled = true;
+    apiSettings.prompts.summary = template;
+    const prompt = buildSummaryPrompt({ ...skillArgs, skills: [], content: '他熟练施展螺旋丸，并说明这是以前学过的招式。' });
+    expect(prompt.system).toContain('不要求出现“学会”“领悟”');
+    expect(prompt.system).toContain('台账中缺少的已有技能也用 add');
+    expect(prompt.system).toContain('普通动作');
+    expect(prompt.system).toContain('主要角色同样适用补录规则');
+    expect(buildSummaryThinking(args.user)).toContain('已掌握但未登记');
+    const preservation = buildResummaryPrompt({ ...args, level: 1 }).system;
+    expect(preservation).toContain('既有技能的明确说明与实际施展');
+    apiSettings.skillsEnabled = false;
+    const disabled = buildSummaryPrompt({ ...skillArgs, skills: [] }).system + buildSummaryThinking(args.user);
+    expect(disabled).not.toMatch(/台账中缺少的已有技能|已掌握但未登记/);
+  });
   it.each([false, true])('stateChanges 的示例和允许字段清单同步技能开关：%s', enabled => {
     apiSettings.skillsEnabled = enabled;
     const text = combined(buildSummaryPrompt(skillArgs));

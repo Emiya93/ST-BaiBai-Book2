@@ -998,7 +998,7 @@ function exportPublicApiDocument() {
           <span class="bbs-field-label">启用技能记录</span>
           <input v-model="apiSettings.skillsEnabled" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">默认开启。显示技能页签和主要角色技能栏，摘要会记录主角与主要角色明确掌握的技能。关闭后隐藏入口、停止技能提取与注入，已有技能保留；重新开启即可继续使用。只想停止向主模型发送技能，可关闭下方「注入设置 → 技能信息」。</p>
+        <p class="bbs-field-hint">默认开启。显示技能页签和主要角色技能栏，摘要会记录主角与主要角色有明确证据掌握的技能；原本就会但未登记的技能在实际施展或明确说明时也可补录，不必本轮新学会。关闭后隐藏入口、停止技能提取与注入，已有技能保留；重新开启即可继续使用。只想停止向主模型发送技能，可关闭下方「注入设置 → 技能信息」。</p>
       </Collapsible>
 
       <Collapsible title="注入设置" :open="false">
