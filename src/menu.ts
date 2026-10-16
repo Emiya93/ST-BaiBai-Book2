@@ -1,6 +1,6 @@
 import { openBook } from '@/state/ui';
 
-const MENU_ITEM_ID = 'bbs-menu-item';
+const MENU_ITEM_ID = 'bbs2-menu-item';
 
 /**
  * 往 ST 的 #extensionsMenu(魔杖菜单)末尾注入"柏宝书"入口。
@@ -14,9 +14,9 @@ export function injectMenuButton() {
 
     const $item = $(`
       <div class="extension_container interactable" tabindex="0">
-        <a id="${MENU_ITEM_ID}" class="list-group-item" href="#" title="柏宝书">
+        <a id="${MENU_ITEM_ID}" class="list-group-item" href="#" title="柏宝书2">
           <i class="fa-solid fa-book-bookmark"></i>
-          <span>柏宝书</span>
+          <span>柏宝书2</span>
         </a>
       </div>
     `);

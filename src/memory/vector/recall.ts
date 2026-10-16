@@ -17,6 +17,8 @@ import { getContext, type STMessage } from '@/st/context';
 import { apiSettings, engineActiveHere } from '@/api/settings';
 import type { VecHit } from '@/api/baibaoku';
 import { vecSearch } from './store';
+import { vecSearch as vecSearchOriginal } from '@/api/baibaoku';
+import { legacyBundleSource } from './scope';
 import { getLeaf, leafValid } from '../apply';
 import { MEMORY_BRIEFING_NOTE, MEMORY_BRIEFING_END } from '../prompts';
 import { embedTexts, encodeFloat32Base64, rerankDocuments } from './embed';
@@ -43,7 +45,7 @@ import {
 } from './debug';
 
 // 注入槽位:贴近历史摘要层(顶部附近),与 inject.ts 的历史摘要同一区域但独立 key。
-const RECALL_INJECT_KEY = 'baibai_book_vector_recall';
+const RECALL_INJECT_KEY = 'baibai_book2_vector_recall';
 const IN_CHAT = 1;
 const ROLE_SYSTEM = 0;
 
@@ -70,7 +72,7 @@ function windowLeafIds(chat: STMessage[]): string[] {
   const keepStart = resolveKeepStart(chat);
   const ids: string[] = [];
   for (let i = keepStart; i < chat.length; i++) {
-    if (chat[i]?.extra?.bbs_omit) continue;
+    if (chat[i]?.extra?.bbs2_omit) continue;
     if (leafValid(chat[i])) ids.push(getLeaf(chat[i])!.id);
   }
   return ids;
@@ -92,7 +94,7 @@ function aiFloorCount(chat: STMessage[]): number {
  * 任一跳过条件命中即返回 false;否则 true。
  */
 function recallWorthRunning(chat: STMessage[]): boolean {
-  if (currentBundleHashes().length > 0) return true; // 旧档无条件召回
+  if (currentBundleHashes().length > 0 || legacyBundleSource()?.hashes.length) return true; // 旧档无条件召回
   if (resolveKeepStart(chat) === 0) return false; // 全在窗口内,无窗口外旧楼可召
   const min = Math.max(0, apiSettings.vector.recall.minAiFloors);
   if (min > 0 && aiFloorCount(chat) < min) return false; // 未达用户起召门槛
@@ -272,10 +274,24 @@ export async function runVectorRecall(signal?: AbortSignal): Promise<void> {
     // 2) 后端检索:多路在范围内纯按 embedding 得分取前 rerankCandidates(后端 max 融合,不套阈值),排除窗口内叶子
     const exclude = windowLeafIds(chat);
     const selfScope = currentChatScope();
-    const { results } = await vecSearch(database, scopes, queryVectors, {
+    const searchOptions = {
       topK: Math.max(1, cfg.rerankCandidates),
       excludeLeafIds: exclude,
-    });
+    };
+    const { results: ownResults } = await vecSearch(database, scopes, queryVectors, searchOptions);
+    const inherited = legacyBundleSource();
+    let inheritedResults: typeof ownResults = [];
+    if (inherited?.hashes.length) {
+      try {
+        inheritedResults = (await vecSearchOriginal(inherited.database, inherited.hashes.map(hash => `bundle:${hash}`), queryVectors, searchOptions)).results;
+      } catch (error) {
+        console.warn('[柏宝书2] 原版历史向量快照暂不可用，本轮保留改版检索结果', error);
+      }
+    }
+    // 同叶子优先采用改版记录，继承的历史只参与只读检索。
+    const candidates = new Map(ownResults.map(hit => [hit.leafId, hit]));
+    for (const hit of inheritedResults) if (!candidates.has(hit.leafId)) candidates.set(hit.leafId, hit);
+    const results = [...candidates.values()].sort((a, b) => b.similarity - a.similarity).slice(0, searchOptions.topK);
     setRecallEmbedding(
       results.map(h => ({
         leafId: h.leafId,

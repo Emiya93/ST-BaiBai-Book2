@@ -20,7 +20,7 @@ const hasLeaf = computed(() => derivedMeta.hasLeaf);
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches;
 
 /* —— 折叠状态:纯本机 UI 态,按聊天分桶存 localStorage(切走再回保持) —— */
-const COLLAPSE_KEY = 'bbs.scenes.collapsed.v1';
+const COLLAPSE_KEY = 'bbs2.scenes.collapsed.v1';
 function chatKey(): string {
   return getContext()?.getCurrentChatId?.() || '_';
 }

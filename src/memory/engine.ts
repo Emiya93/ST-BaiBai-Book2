@@ -360,22 +360,22 @@ const BACKLOG_NOTICE_SENTINEL = '本次生成已拦截';
 /** 是否柏宝书自己插入的积压提示楼。正文识别只用于兼容升级前尚未带专用标记的旧提示楼。 */
 function isBacklogNotice(m: STMessage | undefined): boolean {
   if (!m || m.is_user) return false;
-  if (m.extra?.bbs_internal_notice === 'backlog') return true;
+  if (m.extra?.bbs2_internal_notice === 'backlog') return true;
   return m.name === '柏宝书' && typeof m.mes === 'string' && m.mes.includes(BACKLOG_NOTICE_SENTINEL);
 }
 
 /**
  * 把积压提示楼标成内部楼层:
- *  - bbs_internal_notice:明确身份,避免靠正文长期判断;
- *  - bbs_omit:复用现有「彻底不参与记忆」通道,确保即便旧提示楼曾被误摘,其叶子也不再重放/注入。
+ *  - bbs2_internal_notice:明确身份,避免靠正文长期判断;
+ *  - bbs2_omit:复用现有「彻底不参与记忆」通道,确保即便旧提示楼曾被误摘,其叶子也不再重放/注入。
  * 返回是否改动过 chat,调用方据此重算与落盘。
  */
 function normalizeBacklogNotices(chat: STMessage[]): boolean {
   let changed = false;
   for (const m of chat) {
     if (!isBacklogNotice(m)) continue;
-    if (m.extra?.bbs_internal_notice === 'backlog' && m.extra?.bbs_omit === true) continue;
-    m.extra = { ...(m.extra ?? {}), bbs_internal_notice: 'backlog', bbs_omit: true };
+    if (m.extra?.bbs2_internal_notice === 'backlog' && m.extra?.bbs2_omit === true) continue;
+    m.extra = { ...(m.extra ?? {}), bbs2_internal_notice: 'backlog', bbs2_omit: true };
     changed = true;
   }
   if (changed) {
@@ -389,15 +389,15 @@ function normalizeBacklogNotices(chat: STMessage[]): boolean {
  * 是否「可追踪的 AI 楼层」。与「是否对主 LLM 可见」解耦——隐藏与否都要算,只要它是真实的 AI 回复。
  *
  * 关键区分:`is_system=true` 有两种来源,不能一概排除:
- *   ① 被隐藏的真实 AI 回复(我们 /hide 的 → 带 extra.bbs_hidden;或用户/别的扩展 /hide 的 → 无标记)
+ *   ① 被隐藏的真实 AI 回复(我们 /hide 的 → 带 extra.bbs2_hidden;或用户/别的扩展 /hide 的 → 无标记)
  *      —— 这些是角色的真实发言,**必须算 AI 楼**,否则隐藏过的楼就漏摘(用户实测痛点)。
  *   ② ST 原生系统楼(/sys、/comment、叙事注入等)—— 这些带 extra.type,**不算**。
  * 据此:非用户、有正文、且不是「带 type 的原生系统楼」即为 AI 楼。普通可见回复 is_system=false 自然命中。
  */
 export function isAiFloor(m: STMessage | undefined): boolean {
-  // 番外楼(bbs_omit):对引擎彻底不存在——不摘、不总结、不重放、不注入、不隐藏计数。
-  // 放在最前面短路,凌驾于所有其它判定(含 bbs_hidden)。
-  if (m?.extra?.bbs_omit) return false;
+  // 番外楼(bbs2_omit):对引擎彻底不存在——不摘、不总结、不重放、不注入、不隐藏计数。
+  // 放在最前面短路,凌驾于所有其它判定(含 bbs2_hidden)。
+  if (m?.extra?.bbs2_omit) return false;
   return isRealAiReply(m);
 }
 
@@ -410,7 +410,7 @@ export function isRealAiReply(m: STMessage | undefined): boolean {
   if (!m || m.is_user) return false;
   if (typeof m.mes !== 'string' || !m.mes.trim()) return false;
   if (isBacklogNotice(m)) return false; // 插件内部提示楼不是剧情正文,不挂楼内面板、不参与记忆
-  if (m.extra?.bbs_hidden) return true; // 被我们隐藏的旧 AI 楼
+  if (m.extra?.bbs2_hidden) return true; // 被我们隐藏的旧 AI 楼
   // ST 原生系统楼带 extra.type(narrator/sys 等);真实回复(可见或被 /hide)无 type。
   if (m.is_system && m.extra?.type) return false;
   return true;
@@ -494,7 +494,7 @@ function shouldSkipLastAiForGeneration(chat: STMessage[], type: string | undefin
   if (type !== 'regenerate' && type !== 'swipe') return false;
   for (let i = chat.length - 1; i >= 0; i--) {
     const message = chat[i];
-    if (!message || message.extra?.bbs_omit) continue;
+    if (!message || message.extra?.bbs2_omit) continue;
     return isAiFloor(message);
   }
   return false;
@@ -722,9 +722,9 @@ export async function regenerateFloor(floor: number): Promise<boolean> {
 
 /**
  * 标记 / 取消标记某楼为「番外」(小剧场/番外篇,与主线剧情无关)。
- * 番外楼对引擎**彻底不存在**:不摘、不总结、不重放派生、不注入——由 isAiFloor 等处的 bbs_omit 守卫实现。
+ * 番外楼对引擎**彻底不存在**:不摘、不总结、不重放派生、不注入——由 isAiFloor 等处的 bbs2_omit 守卫实现。
  *
- * 非破坏性:只切 extra.bbs_omit 标记,**不删该楼已有的叶子**。故可逆——取消番外即刻恢复其摘要,
+ * 非破坏性:只切 extra.bbs2_omit 标记,**不删该楼已有的叶子**。故可逆——取消番外即刻恢复其摘要,
  * 无需重新调 AI。叶子/森林数据都原样保留,守卫只是在遍历时跳过它。
  *
  * ⚠️ 边界:若该楼的叶子**已被压进上层总结节点**(L1+),其叙事文字已融入 AI 写的总结散文里,
@@ -739,13 +739,13 @@ export async function setFloorOmit(floor: number, on: boolean): Promise<void> {
   const chat = ctx.chat ?? [];
   const m = chat[floor];
   if (!m) return;
-  const already = !!m.extra?.bbs_omit;
+  const already = !!m.extra?.bbs2_omit;
   if (already === on) return; // 幂等
 
   if (on) {
-    m.extra = { ...(m.extra ?? {}), bbs_omit: true };
+    m.extra = { ...(m.extra ?? {}), bbs2_omit: true };
   } else {
-    const { bbs_omit: _omit, ...rest } = m.extra ?? {};
+    const { bbs2_omit: _omit, ...rest } = m.extra ?? {};
     m.extra = rest;
   }
 
@@ -861,7 +861,7 @@ export function coalesceRanges(indices: number[]): Array<[number, number]> {
  *  - 隐藏「保留窗口之前、已被摘要覆盖、尚未隐藏」的消息。
  *  - 取消隐藏「曾由本插件隐藏、但现在不应隐藏」的消息。
  * 走 ST 原生 /hide(对齐 Horae、自动同步 DOM、走官方入口),
- * /unhide,同时用 extra.bbs_hidden 私有标记区分「我们隐藏的」与「ST 原生系统楼」。
+ * /unhide,同时用 extra.bbs2_hidden 私有标记区分「我们隐藏的」与「ST 原生系统楼」。
  * 只隐藏已被摘要覆盖的,绝不制造信息黑洞。
  */
 async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
@@ -880,8 +880,8 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
     // 否则导入正文会与窗口内旧原文重复注入。删除导入节点后会自动走下面的 unhide。
     const shouldHide = covered.has(i) && (i < keepStart || floorInImportedRanges(i, imported));
     if (shouldHide) {
-      if (!m.extra?.bbs_hidden || m.is_system !== true) toHide.push(i);
-    } else if (m.extra?.bbs_hidden) {
+      if (!m.extra?.bbs2_hidden || m.is_system !== true) toHide.push(i);
+    } else if (m.extra?.bbs2_hidden) {
       toUnhide.push(i);
     }
   }
@@ -894,8 +894,8 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
       try {
         for (let i = start; i <= end; i++) {
           const m = chat[i];
-          if (!m?.extra?.bbs_hidden) continue;
-          const { bbs_hidden: _hidden, ...extra } = m.extra;
+          if (!m?.extra?.bbs2_hidden) continue;
+          const { bbs2_hidden: _hidden, ...extra } = m.extra;
           m.extra = extra;
         }
         await exec(`/unhide ${arg}`);
@@ -905,8 +905,8 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
           const m = chat[i];
           if (!m) continue;
           m.is_system = false;
-          if (m.extra?.bbs_hidden) {
-            const { bbs_hidden: _hidden, ...extra } = m.extra;
+          if (m.extra?.bbs2_hidden) {
+            const { bbs2_hidden: _hidden, ...extra } = m.extra;
             m.extra = extra;
           }
         }
@@ -918,7 +918,7 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
       const arg = start === end ? `${start}` : `${start}-${end}`;
       try {
         // 预写私有标记 + 内存态,防止 /hide 异步期间的竞态 saveChat 覆盖
-        for (let i = start; i <= end; i++) if (chat[i]) chat[i].extra = { ...(chat[i].extra ?? {}), bbs_hidden: true };
+        for (let i = start; i <= end; i++) if (chat[i]) chat[i].extra = { ...(chat[i].extra ?? {}), bbs2_hidden: true };
         await exec(`/hide ${arg}`);
       } catch (e) {
         // /hide 失败则回退到直接写 is_system,保证隐藏一定落地
@@ -932,15 +932,15 @@ async function syncWindowHiddenState(chat: STMessage[]): Promise<void> {
       const m = chat[i];
       if (!m) continue;
       m.is_system = false;
-      if (m.extra?.bbs_hidden) {
-        const { bbs_hidden: _hidden, ...extra } = m.extra;
+      if (m.extra?.bbs2_hidden) {
+        const { bbs2_hidden: _hidden, ...extra } = m.extra;
         m.extra = extra;
       }
     }
     for (const i of toHide) {
       const m = chat[i];
       if (!m) continue;
-      m.extra = { ...(m.extra ?? {}), bbs_hidden: true };
+      m.extra = { ...(m.extra ?? {}), bbs2_hidden: true };
       m.is_system = true;
     }
     try {
@@ -1047,7 +1047,7 @@ function floorTargets(chat: STMessage[], aiFloor: number, covered: Set<number>):
   const targets: number[] = [aiFloor];
   for (let i = aiFloor - 1; i >= 0; i--) {
     if (covered.has(i)) break;
-    if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不把它正文并进摘要上下文(但不作屏障)
+    if (chat[i]?.extra?.bbs2_omit) continue; // 番外楼:不把它正文并进摘要上下文(但不作屏障)
     if (isAiFloor(chat[i])) break; // 碰到上一个 AI 楼层就停
     if (chat[i]) targets.unshift(i);
   }
@@ -1106,7 +1106,7 @@ function applyLeafForFloor(
     v: 1,
   };
   if (replaceLeaf) invalidateSummaryAncestors(replaceLeaf.id);
-  chat[aiFloor].extra = { ...(chat[aiFloor].extra ?? {}), bbs_leaf: leaf };
+  chat[aiFloor].extra = { ...(chat[aiFloor].extra ?? {}), bbs2_leaf: leaf };
   // 叶子正文/摘要已变 → 召回读到的向量内容会变,立即失效召回缓存(防重生成/翻页复用旧召回)。
   invalidateRecallCache();
 
@@ -1487,7 +1487,7 @@ export function coveredSet(chat: STMessage[]): Set<number> {
   const covered = new Set<number>();
   for (const [start, end] of importedHistoryRanges()) {
     for (let i = start; i <= Math.min(end, chat.length - 1); i++) {
-      if (!chat[i]?.extra?.bbs_omit) covered.add(i); // 番外楼仍遵守“完全忽略”,不因导入范围而被隐藏
+      if (!chat[i]?.extra?.bbs2_omit) covered.add(i); // 番外楼仍遵守“完全忽略”,不因导入范围而被隐藏
     }
   }
   let segStart = 0;
@@ -1549,7 +1549,7 @@ function rootsAtLevel(level: number, chat: STMessage[]): RootView[] {
   if (level === 0) {
     const out: RootView[] = [];
     for (let i = 0; i < chat.length; i++) {
-      if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不进森林压缩
+      if (chat[i]?.extra?.bbs2_omit) continue; // 番外楼:不进森林压缩
       if (!leafValid(chat[i])) continue;
       const lf = getLeaf(chat[i]) as LeafExtra;
       if (collected.has(lf.id)) continue; // 已被某 L1 收纳
@@ -1672,7 +1672,7 @@ function collectSelectableNodes(chat: STMessage[]): Map<string, SelectableNode> 
   // 叶子:id → 楼层
   const leafFloor = new Map<string, number>();
   for (let i = 0; i < chat.length; i++) {
-    if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不作为可选节点
+    if (chat[i]?.extra?.bbs2_omit) continue; // 番外楼:不作为可选节点
     if (!leafValid(chat[i])) continue;
     const lf = getLeaf(chat[i]) as LeafExtra;
     leafFloor.set(lf.id, i);

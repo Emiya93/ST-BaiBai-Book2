@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 
-// 浏览器从 /scripts/extensions/third-party/ST-BaiBai-Book/dist/index.js 加载,
+// 浏览器从 /scripts/extensions/third-party/ST-BaiBai-Book2/dist/index.js 加载,
 // 想 import 宿主 ST 的模块时需要算出从 dist/ 回到 ST public/ 根的相对路径。
 // `@sillytavern/scripts/xxx` -> `../../../../../scripts/xxx.js`,并标为 external,
 // 这样 ST 自身的代码不会被打进我们的包里,运行时浏览器直接走相对路径。

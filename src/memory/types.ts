@@ -2,10 +2,10 @@
  * 柏宝书记忆数据模型 —— 混合架构:叶子在消息上,压缩节点在森林
  *
  * 存储位置:
- *  - **叶子摘要**:存在 chat 消息对象的 extra.bbs_leaf 上(LeafExtra)。随消息/swipe
+ *  - **叶子摘要**:存在 chat 消息对象的 extra.bbs2_leaf 上(LeafExtra)。随消息/swipe
  *    由 ST 自动跟随(per-swipe extra)、随 chat 文件持久化。删消息→叶子随之消失;
  *    翻页/regenerate→按 swipe 页码切换有效叶子;普通正文编辑不再自动废除摘要。
- *  - **压缩节点**(L1/L2…):存独立森林 chat_metadata.baibai_book.summaries(MemSummary,
+ *  - **压缩节点**(L1/L2…):存独立森林 chat_metadata.baibai_book2.summaries(MemSummary,
  *    level≥1)。它是跨楼聚合、无单一消息可挂,用 childIds 引用下层(L1→叶子id、L2→L1id)。
  *
  * 核心:
@@ -15,7 +15,8 @@
  *  - 编辑/删除一条已被压缩的叶子 → 删除包含它的整条祖先压缩链(见 apply.pruneBrokenComps)。
  */
 
-export const MEMORY_KEY = 'baibai_book';
+export const MEMORY_KEY = 'baibai_book2';
+export const ORIGINAL_MEMORY_KEY = 'baibai_book';
 /** 3 = 混合架构(叶子在消息 extra);2 = 叶子也在森林;1 = 独立 items/plans/state */
 export const MEMORY_VERSION = 3;
 
@@ -318,10 +319,12 @@ export interface MemPlan {
 }
 
 /**
- * 叶子摘要,存在 chat 消息对象的 extra.bbs_leaf 上(不进森林)。
+ * 叶子摘要,存在 chat 消息对象的 extra.bbs2_leaf 上(不进森林)。
  * 随 swipe_info 自动跟随、随 chat 文件持久化。**重放的唯一来源**。
  */
 export interface LeafExtra {
+  /** 原版复制来的叶子尚无改版旁注；编辑正文时不能据缺少新标签清空物品增量。 */
+  legacyLedger?: boolean;
   /** 稳定叶子 id(写入即固定),压缩节点 childIds 引用它 */
   id: string;
   /** 摘要正文 */
@@ -338,7 +341,7 @@ export interface LeafExtra {
   createdAt: number;
   /**
    * 生成本叶子时所在的 swipe 页码(= 当时 message.swipe_id)。
-   * 用于判定叶子归属:ST 生成新 swipe 时会 structuredClone 旧 extra(含 bbs_leaf),
+   * 用于判定叶子归属:ST 生成新 swipe 时会 structuredClone 旧 extra(含 bbs2_leaf),
    * 把上一页的叶子复制进新页;靠「叶子记录的页码 ≠ 当前 swipe_id」识别这种串页并失效。
    * 缺省(旧数据/迁移)按第一页(0)处理。
    */

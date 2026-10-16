@@ -1,6 +1,6 @@
 /**
  * 图片上传:把用户选的本地图片**压缩**后存到 ST 服务器,拿回一个短路径串
- * (如 /user/images/baibai_book/orb.webp)。
+ * (如 /user/images/baibai_book2/orb.webp)。
  *
  * 为什么不直接把 base64 存进设置:base64 会把图塞进 settings.json,大图让该文件膨胀、
  * 每次保存都带上它。改存「服务器路径串」——既跨设备同步(同一 ST 实例各端共享图片),
@@ -109,7 +109,7 @@ export async function uploadOrbImage(file: File): Promise<string> {
     body: JSON.stringify({
       image: base64,
       format,
-      ch_name: 'baibai_book',
+      ch_name: 'baibai_book2',
       filename: `orb_${++seq}`,
     }),
   });

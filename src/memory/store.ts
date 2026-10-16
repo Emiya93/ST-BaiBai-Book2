@@ -5,11 +5,12 @@ import { deriveMemory, getLeaf, leafValid } from './apply';
 import { isAiFloor, pendingAiFloors } from './engine';
 import { latestStoryTime } from './timeTag';
 import type { BaibaiMemory, LeafExtra, MemSummary, StoredDelta, VarTemplate, VarTier } from './types';
-import { createEmptyMemory, MEMORY_KEY, MEMORY_VERSION, normalizeTemplate } from './types';
+import { createEmptyMemory, MEMORY_KEY, MEMORY_VERSION, ORIGINAL_MEMORY_KEY, normalizeTemplate } from './types';
+import { currentVectorDb, LEGACY_BUNDLES_META_KEY } from './vector/scope';
 
 /**
  * 响应式记忆镜像。
- * 真源:① 压缩节点森林 = chat_metadata[MEMORY_KEY].summaries;② 叶子 = chat 各消息 extra.bbs_leaf。
+ * 真源:① 压缩节点森林 = chat_metadata[MEMORY_KEY].summaries;② 叶子 = chat 各消息 extra.bbs2_leaf。
  * state / items / plans 是从 chat 重放出的派生缓存,供 Vue 渲染。
  */
 export const memory = reactive<BaibaiMemory>(createEmptyMemory());
@@ -51,6 +52,10 @@ function optText(v: unknown): string | undefined {
   return scalarText(v) || undefined;
 }
 
+function metadataRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
 /** 重放 chat 得到 state/items/plans,原地写回;并刷新 derivedMeta */
 export function recomputeDerived(): void {
   const ctx = getContext();
@@ -82,7 +87,7 @@ export function recomputeDerived(): void {
   if (chat) {
     for (let i = 0; i < chat.length; i++) {
       const m = chat[i];
-      if (m?.extra?.bbs_omit) continue; // 番外楼:不进摘要页叶子列表
+      if (m?.extra?.bbs2_omit) continue; // 番外楼:不进摘要页叶子列表
       const leaf = getLeaf(m);
       if (!leaf) continue;
       const valid = leafValid(m);
@@ -144,6 +149,8 @@ export function saveMemory() {
     summaries: JSON.parse(JSON.stringify(memory.summaries)),
     varsTemplate: JSON.parse(JSON.stringify(memory.varTemplates.chat)),
   };
+  // 复制后的 chat 尚未保存成功时保留重试标记，避免 metadata 先落盘后漏继承叶子。
+  if (metadataRecord(ctx.chatMetadata[MEMORY_KEY])?.legacyImportPending) Object.assign(snapshot, { legacyImportPending: true });
   (ctx.chatMetadata as Record<string, unknown>)[MEMORY_KEY] = snapshot;
   ctx.saveMetadataDebounced?.();
 }
@@ -186,7 +193,7 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
         }
       }
     }
-    if (target < 0 || !chat[target] || chat[target].extra?.bbs_leaf) {
+    if (target < 0 || !chat[target] || chat[target].extra?.bbs2_leaf) {
       orphanDeltas.push(delta); // 搬不动/目标已占用 → 兜底
       continue;
     }
@@ -198,7 +205,7 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
       createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
       v: 1,
     };
-    chat[target].extra = { ...(chat[target].extra ?? {}), bbs_leaf: leaf };
+    chat[target].extra = { ...(chat[target].extra ?? {}), bbs2_leaf: leaf };
   }
 
   // 1b) 兜底叶子:把搬不动的 delta 合并挂到最后一条 AI 楼
@@ -210,12 +217,12 @@ function migrateV2toV3(raw: Record<string, unknown>, chat: STMessage[] | null): 
         break;
       }
     }
-    if (last >= 0 && !chat[last].extra?.bbs_leaf) {
+    if (last >= 0 && !chat[last].extra?.bbs2_leaf) {
       const merged: StoredDelta = {};
       for (const d of orphanDeltas) mergeStoredDelta(merged, d);
       chat[last].extra = {
         ...(chat[last].extra ?? {}),
-        bbs_leaf: {
+        bbs2_leaf: {
           id: `leaf_migrate_${Date.now().toString(36)}`,
           text: '(迁移:历史结构化状态)',
           delta: merged,
@@ -278,6 +285,74 @@ function mergeStoredDelta(a: StoredDelta, b: StoredDelta): void {
 
 /* ============ 载入 / 保存 ============ */
 
+/** 按聊天首次复制原版存储；拥有自己的数据后不再回读，删空记录也不会被旧记录复活。 */
+export function inheritOriginalMemory(): void {
+  const ctx = getContext();
+  const meta = ctx?.chatMetadata;
+  if (!ctx?.getCurrentChatId?.() || !meta || !Array.isArray(ctx.chat)) return;
+  const own = metadataRecord(meta[MEMORY_KEY]);
+  if (own && !own.legacyImportPending) return;
+
+  const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+  const extras = ctx.chat.flatMap(message => [message.extra, ...(message.swipe_info ?? []).map(swipe => swipe.extra)]);
+  // 已有改版叶子但缺少森林时按已有数据初始化，不能混入原版的另一套历史。
+  const hasOwnData = extras.some(extra => extra && ['bbs2_leaf', 'bbs2_omit', 'bbs2_hidden'].some(key => key in extra));
+  const retry = own?.legacyImportPending === true;
+  const original = metadataRecord(meta[ORIGINAL_MEMORY_KEY]);
+  const imported = !hasOwnData || retry;
+  const snapshot: Record<string, unknown> = own ? own
+    : imported && original ? clone(original)
+      : { version: MEMORY_VERSION, summaries: [] };
+  let copied = false;
+  if (imported) {
+    for (const extra of extras) {
+      if (!extra || extra.bbs2_inherited) continue;
+      for (const key of ['bbs_leaf', 'bbs_hidden', 'bbs_omit', 'bbs_internal_notice']) {
+        const ownKey = key.replace(/^bbs_/, 'bbs2_');
+        if (extra[key] !== undefined && !(ownKey in extra)) {
+          extra[ownKey] = clone(extra[key]);
+          if (key === 'bbs_leaf' && metadataRecord(extra[ownKey])) {
+            (extra[ownKey] as LeafExtra).legacyLedger = true;
+          }
+          copied = true;
+        }
+      }
+      // 留下独立的继承标记，保存重试时也不能把用户刚删掉的改版叶子从原版复活。
+      if (['bbs_leaf', 'bbs_hidden', 'bbs_omit', 'bbs_internal_notice'].some(key => extra[key] !== undefined)) {
+        extra.bbs2_inherited = true;
+        copied = true;
+      }
+    }
+    // 后端历史 bundle 是不可变快照，保留只读来源；本地向量则在 store.ts 直接复制到新库。
+    const database = currentVectorDb()?.replace(/^bbs2_vec_/, 'bbs_vec_');
+    if (database && Array.isArray(meta.bbs_bundles) && !meta[LEGACY_BUNDLES_META_KEY]) {
+      meta[LEGACY_BUNDLES_META_KEY] = { database, hashes: clone(meta.bbs_bundles) };
+    }
+  }
+  meta[MEMORY_KEY] = snapshot;
+  if (copied || retry) {
+    snapshot.legacyImportPending = true;
+    if (!ctx.saveChat) return;
+    // 先保存 chat，成功后再确认继承完成；失败保留标记供下次打开重试。
+    const chatId = ctx.getCurrentChatId();
+    void Promise.resolve().then(() => {
+      const current = getContext();
+      if (!current || current.getCurrentChatId?.() !== chatId || current.chat !== ctx.chat || current.chatMetadata !== meta) {
+        throw new Error('聊天已切换，保留待确认标记供下次打开重试');
+      }
+      return ctx.saveChat?.();
+    }).then(() => {
+      delete snapshot.legacyImportPending;
+      const saved = metadataRecord(meta[MEMORY_KEY]);
+      if (saved) delete saved.legacyImportPending;
+      const current = getContext();
+      if (current && current.getCurrentChatId?.() === chatId && current.chatMetadata === meta) current.saveMetadataDebounced?.();
+    }).catch(error => console.warn('[柏宝书2] 原版记忆副本保存失败，下次载入将重试', error));
+  } else {
+    ctx.saveMetadataDebounced?.();
+  }
+}
+
 function cleanSummaryNode(s: MemSummary, idx: number): MemSummary {
   return {
     id: scalarText(s.id) || `sum_bad_${idx}_${Date.now().toString(36)}`,
@@ -319,6 +394,7 @@ function loadVarTemplates(rawChatTemplate: unknown): Record<VarTier, VarTemplate
 
 /** 从当前聊天载入森林 + 三层变量模板 + 重算派生(必要时迁移) */
 export function loadMemory() {
+  inheritOriginalMemory();
   const ctx = getContext();
   const meta = ctx?.chatMetadata as Record<string, unknown> | undefined;
   const raw = meta?.[MEMORY_KEY] as Record<string, unknown> | undefined;

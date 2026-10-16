@@ -70,13 +70,13 @@ describe('openingPendingFloor', () => {
     ['a real greeting before the user', [message(), message(true)], 0],
     ['a response after the first user message', [message(true), message()], -1],
     ['an omitted user message before the response', [
-      message(true, { extra: { bbs_omit: true } }), message(),
+      message(true, { extra: { bbs2_omit: true } }), message(),
     ], -1],
     ['a system notice before a real greeting', [
       message(false, { is_system: true, extra: { type: 'narrator' } }), message(),
     ], 1],
     ['multiple AI messages', [message(), message(true), message()], -1],
-    ['an already summarized greeting', [message(false, { extra: { bbs_leaf: leaf() } })], -1],
+    ['an already summarized greeting', [message(false, { extra: { bbs2_leaf: leaf() } })], -1],
     ['a greeting with complete time tags', [message(false, {
       mes: `<bbs_start>${summary.timeStart}</bbs_start>Greeting<bbs_end>${summary.timeEnd}</bbs_end>`,
     })], -1],
@@ -114,7 +114,7 @@ describe('opening generation interception', () => {
     const ai = message(false, {
       swipe_id: 1,
       swipes: ['The first response.'],
-      extra: { bbs_leaf: leaf() },
+      extra: { bbs2_leaf: leaf() },
     });
     const chat = [message(true), ai];
     useChat(chat);
@@ -139,7 +139,7 @@ describe('opening generation interception', () => {
       expect(abort).not.toHaveBeenCalled();
       expect(notices.toast).toHaveBeenCalledOnce();
       expect(client.requestViaMainApi).toHaveBeenCalledOnce();
-      expect(chat[0].extra?.bbs_leaf).toMatchObject({
+      expect(chat[0].extra?.bbs2_leaf).toMatchObject({
         timeStart: summary.timeStart,
         timeEnd: summary.timeEnd,
         swipe: 0,
@@ -156,7 +156,7 @@ describe('opening generation interception', () => {
 
     expect(notices.toast).not.toHaveBeenCalled();
     expect(client.requestViaMainApi).toHaveBeenCalledOnce();
-    expect(chat[1].extra?.bbs_leaf?.text).toBe(summary.summary);
+    expect(chat[1].extra?.bbs2_leaf?.text).toBe(summary.summary);
   });
 });
 
@@ -208,7 +208,7 @@ describe('summary request roles', () => {
     expect(tail[1].content).not.toContain(SOURCE_HINTS_HEADER);
     expect(tail.map(m => m.content).join('\n').split(COMPOSITION_HEADING)).toHaveLength(custom ? 1 : 2);
     expect(tail.map(m => m.content).join('\n').split(SUMMARY_OUTPUT_PROTOCOL)).toHaveLength(2);
-    expect(chat[0].extra?.bbs_leaf?.text).toBe(summary.summary);
+    expect(chat[0].extra?.bbs2_leaf?.text).toBe(summary.summary);
   });
 
   it('stores structured changes alongside a brief audit and summary', async () => {
@@ -234,7 +234,7 @@ describe('summary request roles', () => {
 
     await summarizeFloor(0);
 
-    expect(chat[0].extra?.bbs_leaf).toMatchObject({ text, delta: changes });
+    expect(chat[0].extra?.bbs2_leaf).toMatchObject({ text, delta: changes });
     expect(memory.state).toMatchObject({
       location: changes.location, locationPath: changes.locationPath, sceneFocus: changes.sceneFocus,
     });
@@ -243,7 +243,7 @@ describe('summary request roles', () => {
     expect(memory.scenes[0].desc).toBe(changes.scenes.add[0].desc);
     expect(memory.npcs).toEqual([expect.objectContaining(changes.npcs.add[0])]);
     expect(memory.plans).toEqual([expect.objectContaining(changes.plans.add[0])]);
-    expect(JSON.stringify(chat[0].extra?.bbs_leaf)).not.toContain('Key, place, contact and appointment recorded.');
+    expect(JSON.stringify(chat[0].extra?.bbs2_leaf)).not.toContain('Key, place, contact and appointment recorded.');
   });
 
   it.each(['\n', '\r\n'])('numbers cleaned source paragraphs without changing stored chat (newline=%j)', async newline => {
@@ -280,7 +280,7 @@ describe('summary request roles', () => {
     expect(material).not.toContain('[M2-P7]');
     expect(chat[0].mes).toBe('Start the story.');
     expect(chat[1].mes).toBe(body);
-    expect(chat[1].extra?.bbs_leaf?.text).toBe(summary.summary);
+    expect(chat[1].extra?.bbs2_leaf?.text).toBe(summary.summary);
   });
 
   it.each([
@@ -325,7 +325,7 @@ describe('summary request roles', () => {
     expect(hints).not.toContain('The door opened.');
     expect(material).not.toContain('不应进入提醒');
     expect(chat.map(m => m.mes)).toEqual([userBody, body]);
-    expect(chat[1].extra?.bbs_leaf?.text).toBe(summary.summary);
+    expect(chat[1].extra?.bbs2_leaf?.text).toBe(summary.summary);
     if (custom) expect(material).toContain('CUSTOM 【用户·User】');
   });
 
@@ -334,7 +334,7 @@ describe('summary request roles', () => {
     const future = '未来消息：设备已经恢复正常。';
     const body = '本届联赛参赛者中最强的学生是二转巅峰。';
     const chat = [
-      message(false, { extra: { bbs_leaf: { ...leaf(), text: history } } }),
+      message(false, { extra: { bbs2_leaf: { ...leaf(), text: history } } }),
       message(true),
       message(false, { mes: body }),
       message(false, { mes: future }),
@@ -417,7 +417,7 @@ describe('summary request roles', () => {
     expect(tail[1].content).toContain('[M4-P1] The second response.');
     expect(tail[1].content.match(/\[M\d+-P\d+\]/g)).toEqual(['[M1-P1]', '[M2-P1]', '[M3-P1]', '[M4-P1]']);
     expect(tail[1].content.indexOf('The first response.')).toBeLessThan(tail[1].content.indexOf('The second response.'));
-    expect([chat[1], chat[3]].map(m => m.extra?.bbs_leaf?.text)).toEqual(floors.map(f => f.summary));
+    expect([chat[1], chat[3]].map(m => m.extra?.bbs2_leaf?.text)).toEqual(floors.map(f => f.summary));
   });
 
   it('keeps each batch reminder inside its own floor with original message IDs', async () => {
@@ -442,7 +442,7 @@ describe('summary request roles', () => {
     expect(second.split(SOURCE_HINTS_HEADER)[1]).toContain(`[M4-P1] ${bodies[1]}`);
     expect(second).not.toContain('[M2-P1]');
     expect([chat[1], chat[3]].map(m => m.mes)).toEqual(bodies);
-    expect([chat[1], chat[3]].map(m => m.extra?.bbs_leaf?.text)).toEqual(floors.map(f => f.summary));
+    expect([chat[1], chat[3]].map(m => m.extra?.bbs2_leaf?.text)).toEqual(floors.map(f => f.summary));
   });
 });
 
@@ -474,7 +474,7 @@ describe.each(['automatic', 'manual'] as const)('compression audit output (%s)',
 
   function seedInputs(level: number, texts?: string[]): string[] {
     const chat = [0, 1].map(index => message(false, {
-      extra: { bbs_leaf: { ...leaf(), id: `leaf-${index}`, text: texts?.[index] ?? leaf().text, createdAt: index } },
+      extra: { bbs2_leaf: { ...leaf(), id: `leaf-${index}`, text: texts?.[index] ?? leaf().text, createdAt: index } },
     }));
     useChat(chat);
     if (level === 0) return ['leaf-0', 'leaf-1'];
@@ -536,7 +536,7 @@ describe.each(['automatic', 'manual'] as const)('compression audit output (%s)',
     ];
     const ids = seedInputs(level, texts);
     const inputs = level === 0
-      ? context.getContext()!.chat.map(m => m.extra!.bbs_leaf!)
+      ? context.getContext()!.chat.map(m => m.extra!.bbs2_leaf!)
       : [...memory.summaries];
     for (const input of inputs) {
       input.timeStart = summary.timeStart;

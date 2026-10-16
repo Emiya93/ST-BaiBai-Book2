@@ -30,9 +30,10 @@ const LEDGER_PROTOCOL = (() => {
 export const START_TAG = 'bbs_start';
 export const END_TAG = 'bbs_end';
 /** 物品变动旁注标签:摘要后把本楼物品净变动写进正文 </bbs_end> 之后,供窗口内全文楼层被主模型看到 */
-export const ITEMS_TAG = 'bbs_items';
+export const ITEMS_TAG = 'bbs2_items';
 /** 变量变动旁注标签:与 bbs_items 同机制,写本楼自定义变量净变动,供主模型看到「已改过」防重复改 */
-export const VARS_TAG = 'bbs_vars';
+export const VARS_TAG = 'bbs2_vars';
+const READABLE_LEDGER_TAGS = [ITEMS_TAG, VARS_TAG, 'bbs_items', 'bbs_vars'];
 
 /**
  * 所有「时间锚点生产提示词」共用的完整格式协议。
@@ -104,14 +105,14 @@ export function latestStoryTime(chat: STMessage[] | null): string {
   if (!chat) return '';
   for (let i = chat.length - 1; i >= 0; i--) {
     const m = chat[i];
-    if (m?.extra?.bbs_omit) continue;
+    if (m?.extra?.bbs2_omit) continue;
     if (typeof m?.mes !== 'string' || !m.mes) continue;
     // ① 正文标签优先
     const { start, end } = parseTimeRange(clampToTimeTags(m.mes));
     const tagTime = end || start;
     if (tagTime) return tagTime;
     // ② 标签缺失 → 回退该楼有效叶子的时间(旧聊天补摘:正文无标签但叶子有时间)
-    const leaf = m.extra?.bbs_leaf as LeafExtra | undefined;
+    const leaf = m.extra?.bbs2_leaf as LeafExtra | undefined;
     if (leaf?.id && leaf.delta && leafSwipeMatches(leaf, m)) {
       const leafTime = leaf.timeEnd?.trim() || leaf.timeStart?.trim();
       if (leafTime) return leafTime;
@@ -227,7 +228,7 @@ function isManagedCloseLine(line: string, tag: string): boolean {
 function managedBlockLooksOwned(tag: string, inner: string): boolean {
   const lines = inner.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   if (!lines.length) return false;
-  const re = tag === ITEMS_TAG ? /^(获得|消耗|失去)\s+/ : /^(设定|变更|新增|删除)\s+/;
+  const re = tag === ITEMS_TAG || tag === 'bbs_items' ? /^(获得|消耗|失去)\s+/ : /^(设定|变更|新增|删除)\s+/;
   return lines.every(line => re.test(line));
 }
 
@@ -257,7 +258,7 @@ function stripManagedLineBlocks(region: string, tag: string): string {
 
 /** 无时间标签旧消息兜底:只把末尾连续的插件旁注组视作托管块。 */
 function tailManagedGroupStart(s: string): number {
-  const matches = [...managedBlocks(s, ITEMS_TAG), ...managedBlocks(s, VARS_TAG)]
+  const matches = READABLE_LEDGER_TAGS.flatMap(tag => managedBlocks(s, tag))
     .sort((a, b) => a.start - b.start || a.end - b.end);
   if (!matches.length) return -1;
 
@@ -287,7 +288,8 @@ function stripManagedTag(mes: string, tag: string): string {
 }
 
 function stripManagedTags(mes: string): string {
-  return stripManagedTag(stripManagedTag(mes, ITEMS_TAG), VARS_TAG);
+  // 喂模型时兼容读取两版旁注；写回函数仍只处理自己的标签，保留原版记录。
+  return READABLE_LEDGER_TAGS.reduce((text, tag) => stripManagedTag(text, tag), mes);
 }
 
 function lastManagedBlockEnd(mes: string, tag: string): number {
@@ -476,11 +478,11 @@ export function readVarsTagText(mes: string): string | null {
 /* ============ 自动注册「仅显示层隐藏」正则到 ST ============ */
 
 // ST 全局正则脚本存在 extension_settings.regex(数组)。每类标签使用独立固定 id,做到幂等。
-// 时间脚本保留历史 id 'bbs-time-tag-hide':升级时原来的合并规则会原位收窄为时间规则,
+// 时间脚本保留历史 id 'bbs2-time-tag-hide':升级时原来的合并规则会原位收窄为时间规则,
 // 不会留下旧规则再额外创建一条重复规则。
-const HIDE_TIME_SCRIPT_ID = 'bbs-time-tag-hide';
-const HIDE_ITEMS_SCRIPT_ID = 'bbs-items-tag-hide';
-const HIDE_VARS_SCRIPT_ID = 'bbs-vars-tag-hide';
+const HIDE_TIME_SCRIPT_ID = 'bbs2-time-tag-hide';
+const HIDE_ITEMS_SCRIPT_ID = 'bbs2-items-tag-hide';
+const HIDE_VARS_SCRIPT_ID = 'bbs2-vars-tag-hide';
 // regex_placement(见 ST regex/engine.js):0=MD_DISPLAY 1=USER_INPUT 2=AI_OUTPUT
 const PLACEMENT_MD_DISPLAY = 0;
 const PLACEMENT_USER_INPUT = 1;

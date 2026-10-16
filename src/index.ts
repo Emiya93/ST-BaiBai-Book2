@@ -21,14 +21,14 @@ import '@/styles/base.css';
 import '@/styles/theme.css';
 import { createApp } from 'vue';
 
-const HOST_ID = 'bbs-app-host';
+const HOST_ID = 'bbs2-app-host';
 
 /**
  * 生成拦截器:ST 在每次生成前会 await 调用 manifest.generate_interceptor 指名的全局函数,
  * 签名 (chat, contextSize, abort, type),调 abort(true) 即中止本次生成。
  * 这里委托给引擎判断「积压楼层过多」并按需拦截 + 插提示楼。挂在 globalThis 上供 ST 找到。
  */
-(globalThis as Record<string, unknown>).bbs_generateInterceptor = async (
+(globalThis as Record<string, unknown>).bbs2_generateInterceptor = async (
   _chat: unknown,
   _contextSize: number,
   abort: (immediately: boolean) => void,

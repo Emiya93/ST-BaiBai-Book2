@@ -79,7 +79,8 @@ export const CONDITION_PATCH_PROTOCOL = protocolSection('CONDITION_PATCH_PROTOCO
 /** NPC 定位证据协议(08 内置)。 */
 export const NPC_LOCATION_EVIDENCE_PROTOCOL = protocolSection('NPC_LOCATION_EVIDENCE_PROTOCOL');
 /** 旁注读取协议(注入主对话,提醒主模型不要复写 <bbs_items>/<bbs_vars>)。 */
-export const LEDGER_PROTOCOL = protocolSection('LEDGER_PROTOCOL');
+export const LEDGER_PROTOCOL = protocolSection('LEDGER_PROTOCOL')
+  + '\n柏宝书2的 <bbs2_items>/<bbs2_vars> 与原版旁注同样是已经结算的只读记录，勿重复结算或在正文输出这些标签。';
 
 /** 一个可用占位符(宏):token 用于插入,desc 给用户看「这里会替换成什么」。 */
 export interface PromptMacro {

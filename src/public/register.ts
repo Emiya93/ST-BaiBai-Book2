@@ -29,11 +29,11 @@ import type {
   PublicSnapshot,
   SnapshotAt,
   SnapshotOptions,
-  STBaiBaiBookApi,
+  STBaiBaiBook2Api,
 } from './types';
 
-export const PUBLIC_READY_EVENT = 'st-baibai-book:ready';
-export const PUBLIC_CHANGED_EVENT = 'st-baibai-book:changed';
+export const PUBLIC_READY_EVENT = 'st-baibai-book2:ready';
+export const PUBLIC_CHANGED_EVENT = 'st-baibai-book2:changed';
 
 const capabilities: PublicCapabilities = {
   globalApi: true,
@@ -105,7 +105,7 @@ function bindPublicChangeEvents(): void {
   for (const name of names) eventSource.on(name, queueChangedNotice);
 }
 
-function createApi(): STBaiBaiBookApi {
+function createApi(): STBaiBaiBook2Api {
   return Object.freeze({
     apiVersion: PUBLIC_API_VERSION,
     pluginVersion: PLUGIN_VERSION,
@@ -223,7 +223,7 @@ async function registerSlashCommand(): Promise<boolean> {
 
     const named = (props: Record<string, unknown>) => SlashCommandNamedArgument.fromProps(props);
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-      name: 'bbs-get',
+      name: 'bbs2-get',
       callback: (args: Record<string, unknown>, unnamed: unknown): string => {
         const namedResource = String(args.resource ?? '').trim();
         const resource = normalizeResource(namedResource || firstUnnamed(unnamed));
@@ -286,14 +286,14 @@ async function registerSlashCommand(): Promise<boolean> {
       ],
       helpString: `
         <div>读取柏宝书的只读记忆数据，并把结果传入 STscript 管道。</div>
-        <div><code>/bbs-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw</code></div>
-        <div><code>/bbs-get resource=context floor=42 format=json</code></div>
+        <div><code>/bbs2-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw</code></div>
+        <div><code>/bbs2-get resource=context floor=42 format=json</code></div>
       `,
       returns: ARGUMENT_TYPE.STRING,
     }));
     return true;
   } catch (error) {
-    console.warn('[柏宝书] /bbs-get 注册失败', error);
+    console.warn('[柏宝书] /bbs2-get 注册失败', error);
     return false;
   }
 }
@@ -346,25 +346,25 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
         description: 'before 不含目标楼，after 包含目标楼。',
       };
       const definitions: Array<[string, Record<string, unknown>]> = [
-        ['bbsVars', {
+        ['bbs2Vars', {
           category: categoryVariable,
           description: '返回柏宝书当前自定义变量 JSON。',
           handler: () => macroSafe(() => getSnapshot().vars),
         }],
-        ['bbsState', {
+        ['bbs2State', {
           category: categoryChat,
           description: '返回柏宝书当前时间与地点状态 JSON。',
           handler: () => macroSafe(() => getSnapshot().state),
         }],
-        ['bbsSnapshot', {
+        ['bbs2Snapshot', {
           category: categoryChat,
           unnamedArgs: [optionalFloor, optionalAt],
           description: '返回柏宝书当前或指定楼层的完整状态快照 JSON。',
-          exampleUsage: ['{{bbsSnapshot}}', '{{bbsSnapshot::42::after}}'],
+          exampleUsage: ['{{bbs2Snapshot}}', '{{bbs2Snapshot::42::after}}'],
           handler: ({ unnamedArgs: [floor, at] }: { unnamedArgs: string[] }) =>
             macroSafe(() => macroSnapshot(floor, at)),
         }],
-        ['bbsHistory', {
+        ['bbs2History', {
           category: categoryChat,
           unnamedArgs: [{
             name: 'before',
@@ -374,17 +374,17 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
             description: '仅返回 mesid 小于该值的历史剧情。',
           }],
           description: '返回柏宝书带相对时间的压缩历史剧情文本。',
-          exampleUsage: ['{{bbsHistory}}', '{{bbsHistory::42}}'],
+          exampleUsage: ['{{bbs2History}}', '{{bbs2History::42}}'],
           handler: ({ unnamedArgs: [before] }: { unnamedArgs: string[] }) =>
             macroSafe(() => getHistory({ before: numericArg(before, 'before') }).relativeText),
         }],
-        ['bbsInjectedHistory', {
+        ['bbs2InjectedHistory', {
           category: categoryChat,
           description: '返回与正常记忆注入相同、已跳过滑动窗口的历史剧情文本。',
-          exampleUsage: ['{{bbsInjectedHistory}}'],
+          exampleUsage: ['{{bbs2InjectedHistory}}'],
           handler: () => macroSafe(() => getInjectedHistory().relativeText),
         }],
-        ['bbsVar', {
+        ['bbs2Var', {
           category: categoryVariable,
           unnamedArgs: [{
             name: 'path',
@@ -393,14 +393,14 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
             description: '点号和数组下标变量路径。',
           }, optionalFloor, optionalAt],
           description: '返回柏宝书指定路径的变量值。',
-          exampleUsage: ['{{bbsVar::关系.爱丽丝.好感度}}', '{{bbsVar::队伍[0].hp::42::after}}'],
+          exampleUsage: ['{{bbs2Var::关系.爱丽丝.好感度}}', '{{bbs2Var::队伍[0].hp::42::after}}'],
           handler: ({ unnamedArgs: [path, floor, at] }: { unnamedArgs: string[] }) =>
             macroSafe(() => getVar(path, {
               floor: numericArg(floor, 'floor'),
               at: atArg(at),
             })),
         }],
-        ['bbsFloor', {
+        ['bbs2Floor', {
           category: categoryChat,
           unnamedArgs: [{
             name: 'floor',
@@ -409,7 +409,7 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
             description: 'ST 零基 mesid。',
           }],
           description: '返回指定楼层的正文与叶子摘要 JSON。',
-          exampleUsage: ['{{bbsFloor::42}}'],
+          exampleUsage: ['{{bbs2Floor::42}}'],
           handler: ({ unnamedArgs: [floor] }: { unnamedArgs: string[] }) =>
             macroSafe(() => getFloor(numericArg(floor, 'floor')!)),
         }],
@@ -428,11 +428,11 @@ async function registerMacros(): Promise<{ macros: boolean; parameterized: boole
       };
     };
     const stableMacros: Array<[string, () => string, string]> = [
-      ['bbsVars', () => macroSafe(() => getSnapshot().vars), '返回柏宝书当前自定义变量 JSON。'],
-      ['bbsState', () => macroSafe(() => getSnapshot().state), '返回柏宝书当前状态 JSON。'],
-      ['bbsSnapshot', () => macroSafe(() => getSnapshot()), '返回柏宝书当前完整状态快照 JSON。'],
-      ['bbsHistory', () => macroSafe(() => getHistory().relativeText), '返回柏宝书带相对时间的压缩历史剧情文本。'],
-      ['bbsInjectedHistory', () => macroSafe(() => getInjectedHistory().relativeText), '返回与正常记忆注入相同、已跳过滑动窗口的历史剧情文本。'],
+      ['bbs2Vars', () => macroSafe(() => getSnapshot().vars), '返回柏宝书当前自定义变量 JSON。'],
+      ['bbs2State', () => macroSafe(() => getSnapshot().state), '返回柏宝书当前状态 JSON。'],
+      ['bbs2Snapshot', () => macroSafe(() => getSnapshot()), '返回柏宝书当前完整状态快照 JSON。'],
+      ['bbs2History', () => macroSafe(() => getHistory().relativeText), '返回柏宝书带相对时间的压缩历史剧情文本。'],
+      ['bbs2InjectedHistory', () => macroSafe(() => getInjectedHistory().relativeText), '返回与正常记忆注入相同、已跳过滑动窗口的历史剧情文本。'],
     ];
     for (const [name, handler, description] of stableMacros) {
       legacyModule.MacrosParser.registerMacro(name, handler, description);
@@ -450,7 +450,7 @@ export async function registerPublicInterface(): Promise<void> {
 
   bumpPublicRevision();
   const api = createApi();
-  (globalThis as typeof globalThis & { STBaiBaiBook?: STBaiBaiBookApi }).STBaiBaiBook = api;
+  (globalThis as typeof globalThis & { STBaiBaiBook2?: STBaiBaiBook2Api }).STBaiBaiBook2 = api;
 
   watch(
     [() => derivedMeta.rev, () => memory.summaries],

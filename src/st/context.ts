@@ -14,12 +14,14 @@ export interface STMessage {
   send_date?: string;
   /** 当前显示的 swipe 页码(多页 AI 回复时)。单页/无 swipe 时可能为 undefined,按 0 处理 */
   swipe_id?: number;
+  /** 各回复分支独立的 extra；首次继承需同时复制未显示分支的记忆。 */
+  swipe_info?: Array<{ extra?: STMessage['extra']; [key: string]: unknown }>;
   /** 消息私有数据。柏宝书在这里存隐藏、叶子摘要、番外与内部提示楼标记。 */
   extra?: Record<string, unknown> & {
-    bbs_leaf?: import('@/memory/types').LeafExtra;
-    bbs_hidden?: boolean;
-    bbs_omit?: boolean;
-    bbs_internal_notice?: 'backlog';
+    bbs2_leaf?: import('@/memory/types').LeafExtra;
+    bbs2_hidden?: boolean;
+    bbs2_omit?: boolean;
+    bbs2_internal_notice?: 'backlog';
   };
 }
 

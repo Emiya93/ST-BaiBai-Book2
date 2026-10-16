@@ -1,10 +1,10 @@
-# 柏宝书公开读取接口（API v1）
+# 柏宝书2公开读取接口（API v1）
 
 本文面向 SillyTavern 插件、脚本和预设作者。柏宝书提供三种只读入口：
 
-1. JavaScript 全局 API：`globalThis.STBaiBaiBook`
-2. STscript 斜杠命令：`/bbs-get`
-3. ST 宏：`{{bbsVars}}`、`{{bbsVar::路径}}` 等
+1. JavaScript 全局 API：`globalThis.STBaiBaiBook2`
+2. STscript 斜杠命令：`/bbs2-get`
+3. ST 宏：`{{bbs2Vars}}`、`{{bbs2Var::路径}}` 等
 
 公开接口只返回深拷贝 DTO，不暴露 Vue 响应式对象、聊天消息引用或写入方法。外部代码修改返回值不会改动柏宝书数据。
 
@@ -14,7 +14,7 @@
 - 楼层编号统一使用 SillyTavern 的零基 `mesid`。
 - `at: "before"`：状态不包含目标楼，即只重放 `mesid < floor` 的摘要增量。
 - `at: "after"`：状态包含目标楼，即重放 `mesid <= floor` 的摘要增量；这是默认值。
-- 标记为番外的 `bbs_omit` 楼层始终被忽略。
+- 标记为番外的 `bbs2_omit` 楼层始终被忽略。
 - 无效、串页或缺失的叶子摘要不会参与状态重放。
 - 接口读取能力不依赖“柏宝书 · 记忆引擎”总开关是否开启。
 
@@ -37,14 +37,14 @@ coverage: {
 
 ```js
 function useBaiBaiBook(callback) {
-  if (globalThis.STBaiBaiBook) {
-    callback(globalThis.STBaiBaiBook);
+  if (globalThis.STBaiBaiBook2) {
+    callback(globalThis.STBaiBaiBook2);
     return;
   }
 
   window.addEventListener(
-    'st-baibai-book:ready',
-    () => callback(globalThis.STBaiBaiBook),
+    'st-baibai-book2:ready',
+    () => callback(globalThis.STBaiBaiBook2),
     { once: true },
   );
 }
@@ -53,7 +53,7 @@ function useBaiBaiBook(callback) {
 接口就绪后可检查能力：
 
 ```js
-const api = globalThis.STBaiBaiBook;
+const api = globalThis.STBaiBaiBook2;
 
 console.log(api.apiVersion);     // 1
 console.log(api.pluginVersion);  // 柏宝书插件版本
@@ -79,7 +79,7 @@ console.log(api.capabilities);
 ### 读取当前快照
 
 ```js
-const snapshot = globalThis.STBaiBaiBook.getSnapshot();
+const snapshot = globalThis.STBaiBaiBook2.getSnapshot();
 
 console.log(snapshot.state);
 console.log(snapshot.protagonist);
@@ -144,7 +144,7 @@ console.log(snapshot.lifeDetails);
 
 两侧都可能缺失或为 `null`，表示未知，不能按 `0` 处理。楼层 delta 中省略字段表示保持，`null` 表示撤回该侧估计，`affinityNote: ""` 表示清空说明。估计不等于已证实的心理事实，也不代表爱情、信任、服从或同意。
 
-`snapshot.skills` 是主角技能数组，每项包含 `id`、`name`、可选的 `desc`、`createdAt` 和 `updatedAt`。主要角色的技能说明存于 `snapshot.npcs[].skills`（可选字符串）。技能开关默认关闭，只控制技能界面、新增自动提取和模型提示词；公开只读快照仍保留已有技能数据，便于备份和历史查询。
+`snapshot.skills` 是主角技能数组，每项包含 `id`、`name`、可选的 `desc`、`createdAt` 和 `updatedAt`。主要角色的技能说明存于 `snapshot.npcs[].skills`（可选字符串）。技能开关默认开启，只控制技能界面、新增自动提取和模型提示词；公开只读快照仍保留已有技能数据，便于备份和历史查询。
 
 `snapshot.lifeDetails` 为按人物记录的生活小档案。`subject: "user"` 表示主角，其他字符串为角色在 NPC 名册中的名字；旧叶子缺少 `subject` 时按原有主角专用语义处理，不从正文猜人物。`text` 是该人物的细节正文，显示或注入时会加上姓名。相同内容按人物分别去重，不能跨人合并。
 
@@ -158,12 +158,12 @@ console.log(snapshot.lifeDetails);
 读取某楼之前或之后的状态：
 
 ```js
-const before = globalThis.STBaiBaiBook.getSnapshot({
+const before = globalThis.STBaiBaiBook2.getSnapshot({
   floor: 42,
   at: 'before',
 });
 
-const after = globalThis.STBaiBaiBook.getSnapshot({
+const after = globalThis.STBaiBaiBook2.getSnapshot({
   floor: 42,
   at: 'after',
 });
@@ -174,8 +174,8 @@ const after = globalThis.STBaiBaiBook.getSnapshot({
 变量路径与柏宝书内部一致，支持点号和数字数组下标：
 
 ```js
-const favor = globalThis.STBaiBaiBook.getVar('关系.爱丽丝.好感度');
-const hp = globalThis.STBaiBaiBook.getVar('队伍[0].hp', {
+const favor = globalThis.STBaiBaiBook2.getVar('关系.爱丽丝.好感度');
+const hp = globalThis.STBaiBaiBook2.getVar('队伍[0].hp', {
   floor: 42,
   at: 'after',
 });
@@ -186,7 +186,7 @@ const hp = globalThis.STBaiBaiBook.getVar('队伍[0].hp', {
 ### 读取历史剧情
 
 ```js
-const history = globalThis.STBaiBaiBook.getHistory({
+const history = globalThis.STBaiBaiBook2.getHistory({
   before: 42,
 });
 
@@ -203,7 +203,7 @@ console.log(history.coverage);
 ### 读取正常注入口径的历史剧情
 
 ```js
-const injectedHistory = globalThis.STBaiBaiBook.getInjectedHistory();
+const injectedHistory = globalThis.STBaiBaiBook2.getInjectedHistory();
 
 console.log(injectedHistory.relativeText);
 console.log(injectedHistory.nodes);
@@ -217,7 +217,7 @@ console.log(injectedHistory.coverage);
 ### 读取单楼
 
 ```js
-const floor = globalThis.STBaiBaiBook.getFloor(42);
+const floor = globalThis.STBaiBaiBook2.getFloor(42);
 
 console.log(floor.body);             // 按柏宝书规则清洗后的楼层正文
 console.log(floor.omitted);          // 是否番外
@@ -233,7 +233,7 @@ console.log(floor.memory.delta);
 这是“某楼状态快照 + 之前历史剧情”的推荐入口：
 
 ```js
-const context = globalThis.STBaiBaiBook.getContextAtFloor({
+const context = globalThis.STBaiBaiBook2.getContextAtFloor({
   floor: 42,
 });
 
@@ -249,7 +249,7 @@ console.log(context.coverage);
 ### 通用 query
 
 ```js
-const result = globalThis.STBaiBaiBook.query({
+const result = globalThis.STBaiBaiBook2.query({
   resource: 'var',
   path: '关系.爱丽丝.好感度',
   floor: 42,
@@ -275,9 +275,9 @@ snapshot, history, injectedHistory, floor, context
 通过 API 订阅：
 
 ```js
-const unsubscribe = globalThis.STBaiBaiBook.subscribe(notice => {
+const unsubscribe = globalThis.STBaiBaiBook2.subscribe(notice => {
   console.log(notice.type, notice.revision, notice.chatId);
-  const latest = globalThis.STBaiBaiBook.getSnapshot();
+  const latest = globalThis.STBaiBaiBook2.getSnapshot();
 });
 
 // 插件卸载时
@@ -287,15 +287,15 @@ unsubscribe();
 也可监听 DOM 事件：
 
 ```js
-window.addEventListener('st-baibai-book:changed', event => {
+window.addEventListener('st-baibai-book2:changed', event => {
   console.log(event.detail);
 });
 ```
 
 事件名：
 
-- `st-baibai-book:ready`
-- `st-baibai-book:changed`
+- `st-baibai-book2:ready`
+- `st-baibai-book2:changed`
 
 事件 `detail` 与订阅通知均包含：
 
@@ -312,25 +312,25 @@ window.addEventListener('st-baibai-book:changed', event => {
 
 连续发生的内部更新可能合并为一次 `changed` 通知。消费方应把通知理解为“数据可能已变化”，收到后重新调用查询方法，不要自行猜测增量。
 
-## `/bbs-get` 斜杠命令
+## `/bbs2-get` 斜杠命令
 
 默认输出紧凑 JSON，可直接进入 STscript 管道：
 
 ```text
-/bbs-get resource=snapshot
-/bbs-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw
-/bbs-get resource=history before=42 format=text
-/bbs-get resource=injectedHistory format=text
-/bbs-get resource=floor floor=42 format=json
-/bbs-get resource=context floor=42 format=json
+/bbs2-get resource=snapshot
+/bbs2-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw
+/bbs2-get resource=history before=42 format=text
+/bbs2-get resource=injectedHistory format=text
+/bbs2-get resource=floor floor=42 format=json
+/bbs2-get resource=context floor=42 format=json
 ```
 
 也可以把资源名作为第一个无名参数：
 
 ```text
-/bbs-get snapshot
-/bbs-get history before=42 format=text
-/bbs-get injectedHistory format=text
+/bbs2-get snapshot
+/bbs2-get history before=42 format=text
+/bbs2-get injectedHistory format=text
 ```
 
 参数：
@@ -355,37 +355,37 @@ window.addEventListener('st-baibai-book:changed', event => {
 ### 新旧宏引擎都支持
 
 ```text
-{{bbsVars}}       当前变量树，紧凑 JSON
-{{bbsState}}      当前时间/地点状态，紧凑 JSON
-{{bbsSnapshot}}   当前完整快照，紧凑 JSON
-{{bbsHistory}}    当前全部压缩历史，带相对时间的纯文本
-{{bbsInjectedHistory}} 与正常记忆注入相同，跳过滑动窗口内摘要
+{{bbs2Vars}}       当前变量树，紧凑 JSON
+{{bbs2State}}      当前时间/地点状态，紧凑 JSON
+{{bbs2Snapshot}}   当前完整快照，紧凑 JSON
+{{bbs2History}}    当前全部压缩历史，带相对时间的纯文本
+{{bbs2InjectedHistory}} 与正常记忆注入相同，跳过滑动窗口内摘要
 ```
 
 ### 新宏引擎支持参数
 
 ```text
-{{bbsVar::关系.爱丽丝.好感度}}
-{{bbsVar::队伍[0].hp::42::after}}
-{{bbsSnapshot::42::before}}
-{{bbsSnapshot::42::after}}
-{{bbsHistory::42}}
-{{bbsFloor::42}}
+{{bbs2Var::关系.爱丽丝.好感度}}
+{{bbs2Var::队伍[0].hp::42::after}}
+{{bbs2Snapshot::42::before}}
+{{bbs2Snapshot::42::after}}
+{{bbs2History::42}}
+{{bbs2Floor::42}}
 ```
 
-`{{bbsHistory}}` 和 `{{bbsHistory::42}}` 返回 `getHistory(...).relativeText`。后者只包含 `mesid < 42` 的剧情，并以第 42 楼之前的最新故事时间计算“昨天”“三天前”和周几等标记。
+`{{bbs2History}}` 和 `{{bbs2History::42}}` 返回 `getHistory(...).relativeText`。后者只包含 `mesid < 42` 的剧情，并以第 42 楼之前的最新故事时间计算“昨天”“三天前”和周几等标记。
 
-`{{bbsInjectedHistory}}` 返回 `getInjectedHistory().relativeText`，与正常记忆注入使用相同的节点选择和相对时间规则，因此会自动跳过滑动窗口内仍发送全文的摘要。
+`{{bbs2InjectedHistory}}` 返回 `getInjectedHistory().relativeText`，与正常记忆注入使用相同的节点选择和相对时间规则，因此会自动跳过滑动窗口内仍发送全文的摘要。
 
 宏中的字符串值原样返回；数字和布尔值转为字符串；对象和数组使用紧凑 JSON；`null`、不存在的变量或查询错误返回空字符串。
 
 旧版宏引擎只能使用五个无参数宏。需要参数化读取时，应检查：
 
 ```js
-globalThis.STBaiBaiBook.capabilities.parameterizedMacros
+globalThis.STBaiBaiBook2.capabilities.parameterizedMacros
 ```
 
-若为 `false`，改用 `/bbs-get` 或 JavaScript API。
+若为 `false`，改用 `/bbs2-get` 或 JavaScript API。
 
 ## 错误与边界
 

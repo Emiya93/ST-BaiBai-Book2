@@ -3,11 +3,11 @@
   "loading_order": 100,
   "requires": [],
   "optional": [],
-  "js": "dist/index.js?ver=1.3.1",
-  "generate_interceptor": "bbs_generateInterceptor",
+  "js": "dist/index.js?ver=1.3.2",
+  "generate_interceptor": "bbs2_generateInterceptor",
   "author": "柏柏",
-  "version": "1.3.1",
-  "homePage": "https://github.com/baibai-git/ST-BaiBai-Book",
+  "version": "1.3.2",
+  "homePage": "https://github.com/Emiya93/ST-BaiBai-Book2",
   "auto_update": false,
   "minimum_client_version": "1.12.13"
 }

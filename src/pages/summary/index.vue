@@ -76,8 +76,8 @@ const hasLeaf = computed(() => derivedMeta.hasLeaf);
  * 两区各自攒多了都会把下方摘要顶远,故各自可折叠。标题行兼作折叠开关。
  * 折叠态是本机视图偏好(同 activePage 那类临时导航态),走 localStorage、不进 apiSettings——
  * 跨设备同步它没意义,且不该污染真·设置。 */
-const PLAN_COLLAPSE_KEY = 'bbs.ui.planCollapsed.v1';
-const SUSPENSE_COLLAPSE_KEY = 'bbs.ui.suspenseCollapsed.v1';
+const PLAN_COLLAPSE_KEY = 'bbs2.ui.planCollapsed.v1';
+const SUSPENSE_COLLAPSE_KEY = 'bbs2.ui.suspenseCollapsed.v1';
 function loadCollapsed(key: string): boolean {
   try {
     return localStorage.getItem(key) === '1';

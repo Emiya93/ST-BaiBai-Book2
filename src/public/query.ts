@@ -152,7 +152,7 @@ function buildHistoryNodeMap(
   const byId = new Map<string, ViewNode>();
   for (let i = 0; i < chat.length; i++) {
     const message = chat[i];
-    if (message?.extra?.bbs_omit || !leafValid(message)) continue;
+    if (message?.extra?.bbs2_omit || !leafValid(message)) continue;
     const leaf = getLeaf(message)!;
     byId.set(leaf.id, {
       id: leaf.id,
@@ -278,7 +278,7 @@ export function getFloor(floor: number): PublicFloor {
   const index = requireFloor(floor, chat.length);
   const message = chat[index];
   const leaf = getLeaf(message);
-  const valid = !message.extra?.bbs_omit && leafValid(message);
+  const valid = !message.extra?.bbs2_omit && leafValid(message);
   return clonePublic({
     apiVersion: PUBLIC_API_VERSION,
     pluginVersion: PLUGIN_VERSION,
@@ -287,7 +287,7 @@ export function getFloor(floor: number): PublicFloor {
     floor: index,
     role: floorRole(message),
     name: typeof message.name === 'string' ? message.name : '',
-    omitted: message.extra?.bbs_omit === true,
+    omitted: message.extra?.bbs2_omit === true,
     body: cleanBody(typeof message.mes === 'string' ? message.mes : ''),
     memory: {
       stored: !!leaf,

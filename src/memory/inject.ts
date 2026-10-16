@@ -35,12 +35,12 @@ const IN_CHAT = 1;
 const ROLE_SYSTEM = 0;
 
 /** 旧版单槽位 key;刷新时清空,避免升级后 D2 残留重复注入 */
-const LEGACY_INJECT_KEY = 'baibai_book_memory';
+const LEGACY_INJECT_KEY = 'baibai_book2_memory';
 /** 拆分后的 setExtensionPrompt keys;同 key 重复 set 即覆盖,天然幂等 */
-const HISTORY_INJECT_KEY = 'baibai_book_memory_history';
-const STATE_INJECT_KEY = 'baibai_book_memory_state';
+const HISTORY_INJECT_KEY = 'baibai_book2_memory_history';
+const STATE_INJECT_KEY = 'baibai_book2_memory_state';
 /** 时间标签固定提示词槽:注入主对话,要求每条正文前后输出 <bbs_start>/<bbs_end> */
-const TIMETAG_INJECT_KEY = 'baibai_book_time_tag';
+const TIMETAG_INJECT_KEY = 'baibai_book2_time_tag';
 /** 历史摘要尽量放到聊天上下文顶部;当前状态贴近最近对话 */
 const HISTORY_INJECT_DEPTH = 9999;
 const STATE_INJECT_DEPTH_AFTER_LATEST_AI = 1;
@@ -62,9 +62,9 @@ function leafActiveAt(chat: STMessage[] | null, i: number): boolean {
 /** 用于决定状态快照相对最新 AI 楼的位置;与 engine.ts 的可追踪 AI 楼规则保持一致。 */
 function isTrackableAiMessage(m: STMessage | undefined): boolean {
   if (!m || m.is_user) return false;
-  if (m.extra?.bbs_omit) return false;
+  if (m.extra?.bbs2_omit) return false;
   if (typeof m.mes !== 'string' || !m.mes.trim()) return false;
-  if (m.extra?.bbs_hidden) return true;
+  if (m.extra?.bbs2_hidden) return true;
   return !m.is_system;
 }
 
@@ -104,7 +104,7 @@ function buildView(
 
   if (chat) {
     for (let i = 0; i < chat.length; i++) {
-      if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不进注入视图
+      if (chat[i]?.extra?.bbs2_omit) continue; // 番外楼:不进注入视图
       if (!leafValid(chat[i])) continue; // 陈旧叶子不进视图 → 不注入
       const leaf = getLeaf(chat[i]) as LeafExtra;
       byId.set(leaf.id, {

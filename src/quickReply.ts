@@ -1,7 +1,7 @@
 import { openBook } from '@/state/ui';
 
-const BTN_ID = 'bbs-qr-button';
-const BAR_CLASS = 'bbs-qr-bar'; // 仅当 #qr--bar 不存在时,我们自建的条加这个标记类,便于回收
+const BTN_ID = 'bbs2-qr-button';
+const BAR_CLASS = 'bbs2-qr-bar'; // 仅当 #qr--bar 不存在时,我们自建的条加这个标记类,便于回收
 
 /**
  * 往聊天框上方注入一个「柏宝书」按钮,外观与 ST 原生快速回复按钮**完全一致**。
@@ -49,8 +49,8 @@ function buildButton(): HTMLElement {
   btn.id = BTN_ID;
   btn.className = 'qr--button menu_button interactable';
   btn.setAttribute('tabindex', '0');
-  btn.title = '打开柏宝书';
-  btn.textContent = '柏宝书';
+  btn.title = '打开柏宝书2';
+  btn.textContent = '柏宝书2';
   btn.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();

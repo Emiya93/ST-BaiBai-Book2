@@ -9,7 +9,7 @@
  * 新对话靠现成重放管线(deriveMemory:空白起步逐叶子 fold)还原状态——无需特殊载体,
  * 只要造一片把状态编码成全量 add 的「种子叶子」挂在 #0,并另置一条 L2 总结收纳它(承载合并摘要文本)。
  *
- * 同时(若向量记忆开):把源聊天的向量快照成一个 bundle,哈希写进新聊天 metadata.bbs_bundles(累加),
+ * 同时(若向量记忆开):把源聊天的向量快照成一个 bundle,哈希写进新聊天 metadata.bbs2_bundles(累加),
  * 使新对话能向量召回源聊天的旧剧情。
  */
 
@@ -23,6 +23,7 @@ import { latestStoryTime } from './timeTag';
 import { memory, recomputeDerived, saveMemory, flushLeavesNow } from './store';
 import type { JsonValue, LeafExtra, MemSummary, StoredDelta } from './types';
 import { isBaiBaoKuAvailable, vecBundleCreate } from '@/api/baibaoku';
+import { legacyBundleSource, LEGACY_BUNDLES_META_KEY } from './vector/scope';
 import { appendBundleHash, BUNDLES_META_KEY, currentBundleHashes, currentVectorDb } from './vector/scope';
 
 /** 携带计划:供 UI 预览「将携带多少」。 */
@@ -196,13 +197,18 @@ function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: stri
 /** 深拷贝一条要搬运的消息,取消隐藏、保留叶子。 */
 function sanitizeCarryMessage(m: STMessage, detailIds: ReadonlyMap<string, string>): STMessage {
   const clone: STMessage = JSON.parse(JSON.stringify(m));
+  // 新聊天只携带改版记忆，避免把源聊天残留的原版叶子带入另一套原版森林。
+  for (const extra of [clone.extra, ...(clone.swipe_info ?? []).map(swipe => swipe.extra)]) {
+    if (!extra) continue;
+    for (const key of ['bbs_leaf', 'bbs_hidden', 'bbs_omit', 'bbs_internal_notice']) delete extra[key];
+  }
   clone.is_system = false;
-  if (clone.extra && 'bbs_hidden' in clone.extra) {
-    const { bbs_hidden: _h, ...rest } = clone.extra;
+  if (clone.extra && 'bbs2_hidden' in clone.extra) {
+    const { bbs2_hidden: _h, ...rest } = clone.extra;
     clone.extra = rest;
   }
   // 窗口前的生活条目已改挂种子叶:同步窗口内引用,否则纠正归属/修改/沉降/删除会失效。
-  const life = clone.extra?.bbs_leaf?.delta.lifeDetails;
+  const life = clone.extra?.bbs2_leaf?.delta.lifeDetails;
   if (life) {
     for (const update of life.update ?? []) update.id = detailIds.get(update.id) ?? update.id;
     for (const key of ['archive', 'remove'] as const) {
@@ -270,6 +276,7 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
   const carryStart = resolveKeepStart(sourceChat);
   const sourceChatId = ctx.getCurrentChatId?.() ?? null;
   const parentBundles = currentBundleHashes(); // 源聊天已携带的 bundle 哈希(将继承给新聊天)
+  const inheritedBundles = legacyBundleSource();
 
   // 截止窗口起点的派生状态 → 种子叶子 delta(窗口楼层自己的叶子会继续累加,故截到窗口前避免重复)
   const stateBefore = deriveMemory(sourceChat, carryStart);
@@ -363,7 +370,7 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
       seed: true, // 种子叶子:承载旧对话合并总结,不进向量库(见 index.ts collectLeaves + LeafExtra.seed 注释)
       v: 1,
     };
-    anchor.extra = { ...(anchor.extra ?? {}), bbs_leaf: seedLeaf };
+    anchor.extra = { ...(anchor.extra ?? {}), bbs2_leaf: seedLeaf };
 
     // 新对话森林:重置后放一条 L2 总结收纳种子叶子(承载合并摘要文本)。
     memory.summaries.splice(0, memory.summaries.length);
@@ -383,8 +390,9 @@ export async function createNewChatWithCarryover(): Promise<boolean> {
 
     // 搬入窗口楼层
     for (const m of carryMessages) targetChat.push(m);
+    if (inheritedBundles) targetCtx.chatMetadata[LEGACY_BUNDLES_META_KEY] = JSON.parse(JSON.stringify(inheritedBundles));
 
-    // 写新对话 metadata.bbs_bundles(继承源 + 本次新哈希,累加去重)
+    // 写新对话 metadata.bbs2_bundles(继承源 + 本次新哈希,累加去重)
     if (newBundleHash || parentBundles.length) {
       const meta = targetCtx.chatMetadata as Record<string, unknown>;
       if (newBundleHash) {

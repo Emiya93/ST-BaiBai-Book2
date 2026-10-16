@@ -87,7 +87,7 @@ const lifeGroups = computed(() => {
 const lifeList = computed(() => [...lifeGroups.value.pinned, ...lifeGroups.value.active, ...lifeGroups.value.archive]);
 
 /* —— 生活小档案折叠:与摘要页计划/悬念同款。折叠态是本机视图偏好,走 localStorage、不进 apiSettings —— */
-const LIFE_COLLAPSE_KEY = 'bbs.ui.lifeCollapsed.v1';
+const LIFE_COLLAPSE_KEY = 'bbs2.ui.lifeCollapsed.v1';
 function loadCollapsed(key: string): boolean {
   try {
     return localStorage.getItem(key) === '1';

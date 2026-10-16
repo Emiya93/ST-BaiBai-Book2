@@ -59,9 +59,11 @@ const backendStore: VectorStore = {
 
 /* ============ 本地实现:IndexedDB + JS 余弦 ============ */
 
-const DB_NAME = 'bbs_vec_local';
-const DB_VERSION = 1;
+const DB_NAME = 'bbs2_vec_local';
+const DB_VERSION = 2;
 const STORE = 'items';
+const IMPORTS_STORE = 'imports';
+const completedLocalImports = new Set<string>();
 
 /** IndexedDB 单库单表:key = [database, scope, leafId];by_scope 索引按 [database, scope] 取整段。 */
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -75,6 +77,7 @@ function openDb(): Promise<IDBDatabase> {
         const os = db.createObjectStore(STORE, { keyPath: ['database', 'scope', 'leafId'] });
         os.createIndex('by_scope', ['database', 'scope'], { unique: false });
       }
+      if (!db.objectStoreNames.contains(IMPORTS_STORE)) db.createObjectStore(IMPORTS_STORE);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -95,6 +98,63 @@ function reqDone<T>(r: IDBRequest<T>): Promise<T> {
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
+}
+
+/** 原版 IndexedDB 只读打开；不存在时中止建库，不留下空的原版数据库。 */
+async function openOriginalDb(): Promise<IDBDatabase | null> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('bbs_vec_local');
+    let absent = false;
+    request.onupgradeneeded = () => { absent = true; request.transaction?.abort(); };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => absent ? resolve(null) : reject(request.error);
+  });
+}
+
+/** 直接复制完整向量与 hash，不经过 embedding；每个 scope 与完成标记在同一事务中提交。 */
+export async function inheritLocalVectorScopes(database: string, scopes: string[]): Promise<number> {
+  if (!database.startsWith('bbs2_vec_')) return 0;
+  scopes = [...new Set(scopes)].filter(scope => !completedLocalImports.has(`${database}\0${scope}`));
+  if (!scopes.length) return 0;
+  const target = await openDb();
+  const original = await openOriginalDb();
+  const sourceDatabase = database.replace(/^bbs2_vec_/, 'bbs_vec_');
+  let copied = 0;
+  try {
+    for (const scope of new Set(scopes)) {
+      const importKey = `${database}\0${scope}`;
+      const check = target.transaction(IMPORTS_STORE, 'readonly');
+      if (await reqDone(check.objectStore(IMPORTS_STORE).get(importKey))) {
+        completedLocalImports.add(importKey);
+        continue;
+      }
+      let sourceRows: LocalRecord[] = [];
+      if (original?.objectStoreNames.contains(STORE)) {
+        const read = original.transaction(STORE, 'readonly');
+        sourceRows = await reqDone(read.objectStore(STORE).index('by_scope').getAll(IDBKeyRange.only([sourceDatabase, scope]))) as LocalRecord[];
+      }
+      const write = target.transaction([STORE, IMPORTS_STORE], 'readwrite');
+      const done = txDone(write);
+      const imports = write.objectStore(IMPORTS_STORE);
+      const items = write.objectStore(STORE);
+      // 在同一写事务内重查，避免两个标签页同时继承并覆盖已编辑的改版索引。
+      const imported = imports.get(importKey);
+      imported.onsuccess = () => {
+        if (imported.result) return;
+        const existing = items.index('by_scope').count(IDBKeyRange.only([database, scope]));
+        existing.onsuccess = () => {
+          if (!existing.result) {
+            for (const row of sourceRows) items.put({ ...row, database });
+            copied += sourceRows.length;
+          }
+          imports.put(true, importKey);
+        };
+      };
+      await done;
+      completedLocalImports.add(importKey);
+    }
+  } finally { original?.close(); }
+  return copied;
 }
 
 /** 落库记录:向量以 Float32Array 直存(IndexedDB 结构化克隆原生支持类型化数组,免反复编解码)。 */
@@ -332,8 +392,15 @@ export function resetVectorStoreProbe(): void {
 
 /* ============ 对外转发:与 api/baibaoku.ts 同名同签名 ============ */
 
+/** 先从原版复制本地索引，再进行对账，避免把已存在的向量误判成缺失并重新计费。 */
+async function storeAfterInheritance(database: string, scopes: string[]): Promise<VectorStore> {
+  const store = await getVectorStore();
+  if (store.kind === 'local') await inheritLocalVectorScopes(database, scopes);
+  return store;
+}
+
 export async function vecUpsert(database: string, scope: string, items: VecItem[]): Promise<{ upserted: number }> {
-  return (await getVectorStore()).upsert(database, scope, items);
+  return (await storeAfterInheritance(database, [scope])).upsert(database, scope, items);
 }
 
 export async function vecUpdatePayload(
@@ -341,7 +408,7 @@ export async function vecUpdatePayload(
   scope: string,
   items: VecPayloadItem[],
 ): Promise<{ updated: number }> {
-  return (await getVectorStore()).updatePayload(database, scope, items);
+  return (await storeAfterInheritance(database, [scope])).updatePayload(database, scope, items);
 }
 
 export async function vecSearch(
@@ -350,7 +417,7 @@ export async function vecSearch(
   queryVectors: string[],
   opts: SearchOpts = {},
 ): Promise<{ results: VecHit[] }> {
-  return (await getVectorStore()).search(database, scopes, queryVectors, opts);
+  return (await storeAfterInheritance(database, scopes)).search(database, scopes, queryVectors, opts);
 }
 
 export async function vecReconcile(
@@ -358,13 +425,13 @@ export async function vecReconcile(
   scope: string,
   present: Array<{ leafId: string; docHash: string; payloadHash: string }>,
 ): Promise<{ deleted: number; missing: string[]; stalePayload: string[] }> {
-  return (await getVectorStore()).reconcile(database, scope, present);
+  return (await storeAfterInheritance(database, [scope])).reconcile(database, scope, present);
 }
 
 export async function vecClearScope(database: string, scope: string): Promise<{ deleted: number }> {
-  return (await getVectorStore()).clearScope(database, scope);
+  return (await storeAfterInheritance(database, [scope])).clearScope(database, scope);
 }
 
 export async function vecStats(database: string, scopes: string[]): Promise<{ stats: Record<string, number> }> {
-  return (await getVectorStore()).stats(database, scopes);
+  return (await storeAfterInheritance(database, scopes)).stats(database, scopes);
 }

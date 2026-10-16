@@ -19,6 +19,56 @@ const channel: ApiChannel = {
   reasoningEffort: '',
 };
 
+describe('改版设置首次继承', () => {
+  afterEach(() => {
+    vi.doUnmock('@/st/context');
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it.each(['fresh', 'original', 'existing', 'legacy-local'])('继承仅复制原版，技能默认开启且已有改版选择不被覆盖：%s', async scenario => {
+    vi.resetModules();
+    const local = new Map<string, string>();
+    const source = { enabled: false, skillsEnabled: false, keepRecent: 7, channels: [channel], assignments: { summary: 'ch1' }, prompts: { summary: '自定义摘要 {{content}}' }, ui: { theme: 'night' }, varsGlobalTemplate: { json: { 金币: 12 }, meaning: '钱币', rule: '交易时修改' } };
+    const extensionSettings: Record<string, unknown> = {};
+    if (scenario === 'original' || scenario === 'existing') {
+      extensionSettings.baibai_book = structuredClone(source);
+      extensionSettings.baibai_api_channels = { revision: 4, channels: [channel] };
+    }
+    if (scenario === 'existing') extensionSettings.baibai_book2 = { skillsEnabled: false, keepRecent: 2, wiPatternsSeeded: true };
+    if (scenario === 'legacy-local') local.set('bbs.api.v1', JSON.stringify(source));
+    const originalSnapshot = JSON.stringify(extensionSettings.baibai_book);
+    const originalChannels = JSON.stringify(extensionSettings.baibai_api_channels);
+    vi.stubGlobal('localStorage', {
+      get length() { return local.size; },
+      key: (index: number) => [...local.keys()][index] ?? null,
+      getItem: (key: string) => local.get(key) ?? null,
+      setItem: (key: string, value: string) => local.set(key, value),
+      removeItem: (key: string) => local.delete(key),
+    });
+    vi.stubGlobal('window', { addEventListener: vi.fn(), dispatchEvent: vi.fn() });
+    vi.doMock('@/st/context', () => ({ getContext: () => ({ extensionSettings, saveSettingsDebounced: vi.fn() }) }));
+    const isolated = await import('./settings');
+    isolated.hydrateSettings();
+    expect(isolated.apiSettings.skillsEnabled).toBe(scenario !== 'existing');
+    if (scenario === 'original' || scenario === 'legacy-local') {
+      expect(isolated.apiSettings.keepRecent).toBe(7);
+      expect(isolated.apiSettings.channels[0]).toMatchObject(channel);
+      expect(isolated.apiSettings.assignments.summary).toBe('ch1');
+      expect(isolated.apiSettings.prompts.summary).toBe(source.prompts.summary);
+      expect(isolated.apiSettings.varsGlobalTemplate.json).toEqual({ 金币: 12 });
+    }
+    isolated.apiSettings.keepRecent = 9;
+    isolated.hydrateSettings();
+    expect(isolated.apiSettings.keepRecent).toBe(9);
+    expect(JSON.stringify(extensionSettings.baibai_book)).toBe(originalSnapshot);
+    expect(JSON.stringify(extensionSettings.baibai_api_channels)).toBe(originalChannels);
+    if (scenario === 'legacy-local') expect(local.get('bbs.api.v1')).toBe(JSON.stringify(source));
+    expect(extensionSettings.baibai_book2).toBeTruthy();
+  });
+});
+
 describe('buildRequestBody:思考强度与两条源分支', () => {
   const msgs = [{ role: 'user' as const, content: 'hi' }];
   const build = (over: Partial<ApiChannel> = {}) =>

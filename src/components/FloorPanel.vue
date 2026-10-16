@@ -44,7 +44,7 @@ const msg = computed<STMessage | undefined>(() => {
 const omit = computed(() => {
   void props.sig.tick;
   void derivedMeta.rev;
-  return !!msg.value?.extra?.bbs_omit;
+  return !!msg.value?.extra?.bbs2_omit;
 });
 // leaf 还额外返回浅拷贝(新引用),让依赖 leaf 的下游(d/*Tags/preview)也强制重算。
 const leaf = computed<LeafExtra | null>(() => {

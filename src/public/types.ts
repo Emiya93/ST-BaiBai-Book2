@@ -198,7 +198,7 @@ export interface PublicChangeNotice {
 
 export type PublicChangeListener = (notice: PublicChangeNotice) => void;
 
-export interface STBaiBaiBookApi {
+export interface STBaiBaiBook2Api {
   readonly apiVersion: 1;
   readonly pluginVersion: string;
   readonly capabilities: PublicCapabilities;

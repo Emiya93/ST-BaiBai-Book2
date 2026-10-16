@@ -22,7 +22,7 @@ const orbW = computed(() => (ui.orbShape === 'bookmark' ? Math.round(ui.orbSize 
 const orbH = computed(() => ui.orbSize);
 const SNAP_ZONE = 56; // 松手时距左/右边缘 ≤ 此值即吸附贴边
 const CLICK_SLOP = 6; // 位移 < 此值视为点击而非拖动
-const POS_KEY = 'bbs.orb.pos.v1';
+const POS_KEY = 'bbs2.orb.pos.v1';
 
 type Dock = 'left' | 'right' | 'none';
 interface OrbPos {
@@ -182,7 +182,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
     :style="orbStyle"
     role="button"
     tabindex="0"
-    aria-label="打开柏宝书"
+    aria-label="打开柏宝书2"
     @pointerdown="onDown"
     @pointermove="onMove"
     @pointerup="onUp"

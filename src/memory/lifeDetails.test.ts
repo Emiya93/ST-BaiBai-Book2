@@ -24,7 +24,7 @@ const original = {
 let seq = 0;
 const message = (delta: StoredDelta = {}): STMessage => ({
   name: '艾琳', is_user: false, is_system: false, mes: '两人正在讨论吃煎饼果子。',
-  extra: { bbs_leaf: { id: `life-${++seq}`, text: '讨论早餐', delta, createdAt: seq, swipe: 0, v: 1 } },
+  extra: { bbs2_leaf: { id: `life-${++seq}`, text: '讨论早餐', delta, createdAt: seq, swipe: 0, v: 1 } },
 });
 const detail = (subject?: string, text = '认为煎饼果子不加脆饼就没有灵魂'): MemLifeDetail => ({
   id: `detail:${subject ?? 'legacy'}#0`, subject, text, topics: ['饮食'], anchors: ['煎饼果子'], tier: 'active', createdAt: 1,
@@ -216,7 +216,7 @@ describe('每条生活细节都有明确主语', () => {
 describe('实际摘要与跨对话继承', () => {
   it('摘要收到带主语旧记录,解析 AI 新角色归属和旧记录纠正', async () => {
     const second = message();
-    delete second.extra!.bbs_leaf;
+    delete second.extra!.bbs2_leaf;
     const chat = [message({ lifeDetails: { add: [detail()] } }), second];
     useChat(chat);
     vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
@@ -228,7 +228,7 @@ describe('实际摘要与跨对话继承', () => {
     await summarizeFloor(1);
     const request = vi.mocked(client.requestViaMainApi).mock.calls[0][0].map(m => m.content).join('\n');
     expect(request).toContain(`林舟：${detail().text}`);
-    expect(chat[1].extra!.bbs_leaf!.delta.lifeDetails!.add![0].subject).toBe('艾琳');
+    expect(chat[1].extra!.bbs2_leaf!.delta.lifeDetails!.add![0].subject).toBe('艾琳');
     expect(memory.lifeDetails.map(d => [d.subject, d.text])).toEqual([
       ['user', '煎饼果子可以不加脆饼'], ['艾琳', '喝茶不加糖'],
     ]);
@@ -241,8 +241,8 @@ describe('实际摘要与跨对话继承', () => {
       add: [detail('小青')],
       update: [{ id: ids[1], subject: '艾莉', text: '口味已纠正' }], archive: [ids[2]], remove: [ids[3]],
     } });
-    const ownId = `detail:${last.extra!.bbs_leaf!.id}#0`;
-    last.extra!.bbs_leaf!.delta.lifeDetails!.update!.push({ id: ownId, text: '喜欢酸味' });
+    const ownId = `detail:${last.extra!.bbs2_leaf!.id}#0`;
+    last.extra!.bbs2_leaf!.delta.lifeDetails!.update!.push({ id: ownId, text: '喜欢酸味' });
     const chat = [first, message({ lifeDetails: { update: [{ id: ids[1], tier: 'pinned' }] } }), last];
     const source = useChat(chat);
     const before = JSON.stringify(chat);
@@ -255,6 +255,6 @@ describe('实际摘要与跨对话继承', () => {
     expect(carried.map(d => [d.subject, d.tier])).toEqual([['user', 'active'], ['艾莉', 'pinned'], ['小夏', 'archive'], ['小青', 'active']]);
     expect(carried[1].text).toBe('口味已纠正');
     expect(carried[3]).toMatchObject({ id: ownId, text: '喜欢酸味' });
-    expect(target.chat[0].extra!.bbs_leaf!.delta.lifeDetails!.add!.map(d => d.subject)).toEqual(['user', '艾琳', '小夏', '阿禾']);
+    expect(target.chat[0].extra!.bbs2_leaf!.delta.lifeDetails!.add!.map(d => d.subject)).toEqual(['user', '艾琳', '小夏', '阿禾']);
   });
 });

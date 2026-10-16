@@ -681,24 +681,24 @@ function scorePct(score: number): number {
 /* —— 获取数据:宏速查 + 公共接口文档导出 —— */
 const DATA_MACROS = [
   {
-    token: '{{bbsInjectedHistory}}',
+    token: '{{bbs2InjectedHistory}}',
     title: '正常注入历史',
     desc: '与柏宝书正常注入一致,自动跳过滑动窗口内仍发送全文的摘要。',
   },
   {
-    token: '{{bbsHistory}}',
+    token: '{{bbs2History}}',
     title: '全部压缩历史',
     desc: '返回当前聊天全部有效摘要与总结,包括滑动窗口内已有摘要的楼层。',
   },
   {
-    token: '{{bbsVars}}',
+    token: '{{bbs2Vars}}',
     title: '全部变量',
     desc: '返回当前自定义变量树的紧凑 JSON。',
   },
   {
-    token: '{{bbsVar::路径}}',
+    token: '{{bbs2Var::路径}}',
     title: '单个变量',
-    desc: '按路径读取变量,例如 {{bbsVar::关系.爱丽丝.好感度}}。需要新版宏引擎。',
+    desc: '按路径读取变量,例如 {{bbs2Var::关系.爱丽丝.好感度}}。需要新版宏引擎。',
   },
 ] as const;
 
@@ -714,7 +714,7 @@ async function copyDataMacro(token: string) {
 function exportPublicApiDocument() {
   const anchor = document.createElement('a');
   anchor.href = versionedAssetUrl('../PUBLIC_API.md', import.meta.url);
-  anchor.download = 'ST-BaiBai-Book-PUBLIC_API.md';
+  anchor.download = 'ST-BaiBai-Book2-PUBLIC_API.md';
   anchor.click();
   toast('公共接口文档已导出', 'success');
 }
@@ -754,7 +754,7 @@ function exportPublicApiDocument() {
     <div class="bbs-master" :class="{ 'is-off': !apiSettings.enabled }">
       <span class="bbs-master-spine" aria-hidden="true"></span>
       <div class="bbs-master-text">
-        <span class="bbs-master-title">柏宝书 · 记忆引擎</span>
+        <span class="bbs-master-title">柏宝书2 · 记忆引擎</span>
       </div>
       <button
         type="button"
@@ -998,7 +998,7 @@ function exportPublicApiDocument() {
           <span class="bbs-field-label">启用技能记录</span>
           <input v-model="apiSettings.skillsEnabled" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">开启后显示技能页签和主要角色技能栏，摘要会记录主角与主要角色明确掌握的技能，并在提示词中提供技能及其限制。关闭后隐藏入口、停止技能提取与注入，已有技能保留；重新开启即可继续使用。「仅注入剧情摘要」仍会阻止技能状态向主模型注入。</p>
+        <p class="bbs-field-hint">默认开启。显示技能页签和主要角色技能栏，摘要会记录主角与主要角色明确掌握的技能，并在提示词中提供技能及其限制。关闭后隐藏入口、停止技能提取与注入，已有技能保留；重新开启即可继续使用。「仅注入剧情摘要」仍会阻止技能状态向主模型注入。</p>
       </Collapsible>
 
       <Collapsible title="注入设置" :open="false">

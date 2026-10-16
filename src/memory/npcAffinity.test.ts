@@ -12,7 +12,11 @@ import { currentSummaryPromise, summarizeFloor } from './engine';
 import * as inject from './inject';
 import { affinityLevelFromInput, applyNpcAffinity, cleanNpcAffinityLevel, fmtNpcAffinity, fmtNpcSummaryList, NPC_AFFINITY_BRIEFING } from './npcRelations';
 import { buildSummaryPrompt, RULE_NPC_AFFINITY } from './prompts';
-import { memory, recomputeDerived } from './store';
+import { inheritOriginalMemory, loadMemory, memory, recomputeDerived, saveMemory } from './store';
+import { deleteLeafAt, syncItemLogFromMessage } from './apply';
+import { MEMORY_KEY, ORIGINAL_MEMORY_KEY } from './types';
+import { currentVectorDb, LEGACY_BUNDLES_META_KEY } from './vector/scope';
+import { cleanBody, writeItemLogTag, writeVarLogTag } from './timeTag';
 import { createEmptyMemory, type NpcAffinity, type NpcDelta, type StoredDelta, type SummaryDelta } from './types';
 
 const name = '艾琳';
@@ -28,7 +32,7 @@ const original = {
 let seq = 0;
 const message = (delta: StoredDelta = {}): STMessage => ({
   name: 'Character', is_user: false, is_system: false, mes: '一段明确发生的剧情。',
-  extra: { bbs_leaf: { id: `affinity-${++seq}`, text: '剧情摘要', delta, createdAt: seq, swipe: 0, v: 1 } },
+  extra: { bbs2_leaf: { id: `affinity-${++seq}`, text: '剧情摘要', delta, createdAt: seq, swipe: 0, v: 1 } },
 });
 const base = () => message({ npcs: { add: [{ ...initial }] } });
 const patch = (values: Omit<NpcDelta, 'name'>) => message({ npcs: { update: [{ name, ...values }] } });
@@ -72,6 +76,87 @@ afterEach(async () => {
   settings.apiSettings.vector.enabled = original.vector;
 });
 
+describe('原版记忆首次继承与隔离', () => {
+  function originalChat() {
+    const old = message({
+      time: '2026/10/16 12:00',
+      protagonist: { identity: '法师' },
+      items: { add: [{ name: '法杖', qty: 2 }] },
+      npcs: { add: [{ name, important: true }] },
+      plans: { add: [{ kind: 'plan', content: '前往城堡' }] },
+      scenes: { add: [{ path: ['城'], desc: '城池' }] },
+      lifeDetails: { add: [{ subject: 'user', text: '喜欢甜茶', topics: [], anchors: [] }] },
+      varOps: [{ op: 'add', path: '金币', delta: 5 }],
+    });
+    old.extra = { bbs_leaf: old.extra!.bbs2_leaf, bbs_hidden: true, bbs_omit: false };
+    old.swipe_info = [{ extra: { bbs_leaf: old.extra.bbs_leaf } }, { extra: { bbs_leaf: { ...(old.extra.bbs_leaf as object), text: '另一分支', swipe: 1 } } }];
+    return old;
+  }
+  it('完整复制森林、当前及未选分支、变量和角色，新增技能为空，修改副本不改原版', async () => {
+    const old = originalChat();
+    const sourceExtra = structuredClone(old.extra);
+    const ctx = useChat([old]);
+    ctx.characters = [{ avatar: '角色.png', name: '角色' }]; ctx.characterId = 0;
+    ctx.chatMetadata[ORIGINAL_MEMORY_KEY] = { version: 3, summaries: [], varsTemplate: { json: { 金币: 10 }, meaning: '', rule: '' } };
+    ctx.chatMetadata.bbs_bundles = ['old-bundle'];
+    const oldMetadata = structuredClone(ctx.chatMetadata[ORIGINAL_MEMORY_KEY]);
+    loadMemory();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(memory.protagonist.identity).toBe('法师');
+    expect(memory.items[0]).toMatchObject({ name: '法杖', qty: 2 });
+    expect(memory.vars.金币).toBe(15);
+    expect(memory.npcs[0].name).toBe(name);
+    expect(memory.plans[0].content).toBe('前往城堡');
+    expect(memory.scenes[0].name).toBe('城');
+    expect(memory.lifeDetails[0].text).toBe('喜欢甜茶');
+    expect(memory.skills).toEqual([]); expect(memory.npcs[0].skills).toBeUndefined();
+    expect(old.swipe_info![1].extra!.bbs2_leaf!.text).toBe('另一分支');
+    expect(old.extra!.bbs2_leaf).not.toBe(old.extra!.bbs_leaf);
+    expect(old.swipe_info![0].extra!.bbs2_leaf).not.toBe(old.extra!.bbs_leaf);
+    expect(ctx.chatMetadata[LEGACY_BUNDLES_META_KEY]).toMatchObject({ database: currentVectorDb()!.replace('bbs2_vec_', 'bbs_vec_'), hashes: ['old-bundle'] });
+    expect(appendOpToLatestLeaf({ skills: { add: [{ name: '星火术' }] }, items: { update: [{ name: '法杖', qty: 1 }] } })).toBe(true);
+    saveMemory();
+    expect(old.extra!.bbs_leaf).toEqual(sourceExtra!.bbs_leaf);
+    expect(ctx.chatMetadata[ORIGINAL_MEMORY_KEY]).toEqual(oldMetadata);
+    expect(old.extra!.bbs_hidden).toBe(true);
+    expect(old.extra!.bbs_omit).toBe(false);
+  });
+  it('已有改版数据不被旧数据覆盖，删除后的叶子不会被反复导入', () => {
+    const old = originalChat(); const ctx = useChat([old]);
+    loadMemory();
+    expect(deleteLeafAt(0)).toBe(true);
+    loadMemory();
+    expect(old.extra!.bbs2_leaf).toBeUndefined();
+    expect(old.extra!.bbs_leaf).toBeTruthy();
+    expect(memory.items).toEqual([]);
+    ctx.chatMetadata[MEMORY_KEY] = { version: 3, summaries: [] };
+    old.extra!.bbs2_leaf = { ...(old.extra!.bbs_leaf as NonNullable<typeof old.extra>['bbs2_leaf'])!, text: '改版已编辑' };
+    loadMemory();
+    expect(old.extra!.bbs2_leaf!.text).toBe('改版已编辑');
+  });
+  it('中途保存记忆不丢失继承标记，chat 保存成功后再确认完成', async () => {
+    const old = originalChat(); const ctx = useChat([old]);
+    let resolveSave!: () => void;
+    vi.mocked(ctx.saveChat!).mockReturnValue(new Promise<void>(resolve => { resolveSave = resolve; }));
+    inheritOriginalMemory(); saveMemory();
+    expect(ctx.chatMetadata[MEMORY_KEY]).toHaveProperty('legacyImportPending', true);
+    await Promise.resolve(); resolveSave();
+    await vi.waitFor(() => expect(ctx.chatMetadata[MEMORY_KEY]).not.toHaveProperty('legacyImportPending'));
+  });
+  it('原版旧旁注保持不变，改版只写自己的旁注且不会因缺少新旁注丢物品', () => {
+    const old = originalChat(); const ctx = useChat([old]);
+    old.mes = '原剧情\n<bbs_items>\n获得 法杖 ×2\n</bbs_items>\n<bbs_vars>\n变更 金币 +5\n</bbs_vars>';
+    loadMemory();
+    expect(syncItemLogFromMessage(0)).toBe(false);
+    expect(memory.items[0].qty).toBe(2);
+    const newBody = writeVarLogTag(writeItemLogTag(old.mes, '消耗 法杖 ×1'), '变更 金币 +1');
+    expect(newBody).toContain(old.mes);
+    expect(newBody).toContain('<bbs2_items>'); expect(newBody).toContain('<bbs2_vars>');
+    expect(cleanBody(newBody)).toBe('原剧情');
+    expect(ctx.chatMetadata[ORIGINAL_MEMORY_KEY]).toBeUndefined();
+  });
+});
+
 describe('技能台账与角色技能', () => {
   const known = (): StoredDelta => ({
     items: { add: [{ name: '法杖', qty: 1 }] },
@@ -83,9 +168,9 @@ describe('技能台账与角色技能', () => {
     const chat = [message(known()), message({ skills: { update: [{ name: '星火术', desc: '更明亮' }] } })];
     expect(deriveMemory(chat, 1).skills[0].desc).toContain('消耗三点法力');
     expect(deriveMemory(chat).skills[0].desc).toBe('更明亮');
-    chat[1].extra!.bbs_omit = true;
+    chat[1].extra!.bbs2_omit = true;
     expect(deriveMemory(chat).skills[0].desc).toContain('消耗三点法力');
-    delete chat[1].extra!.bbs_omit;
+    delete chat[1].extra!.bbs2_omit;
     chat[1].swipe_id = 1;
     expect(deriveMemory(chat).skills[0].desc).toContain('消耗三点法力');
     chat[1] = message({ skills: { remove: ['星火术'] }, npcs: { update: [{ name, skills: '' }] } });
@@ -136,7 +221,7 @@ describe('技能台账与角色技能', () => {
   });
   it.each([false, true])('真实摘要请求与响应遵守技能开关：%s', async enabled => {
     settings.apiSettings.skillsEnabled = enabled;
-    const next = message(); delete next.extra!.bbs_leaf;
+    const next = message(); delete next.extra!.bbs2_leaf;
     const chat = [message(known()), next];
     useChat(chat);
     vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
@@ -174,7 +259,7 @@ describe('技能台账与角色技能', () => {
     vi.spyOn(inject, 'refreshInjection').mockImplementation(() => {});
     expect(await createNewChatWithCarryover()).toBe(true);
     expect(JSON.stringify(chat)).toBe(before);
-    expect(target.chat[0].extra!.bbs_leaf!.delta.skills!.add![0].desc).toContain('三点法力');
+    expect(target.chat[0].extra!.bbs2_leaf!.delta.skills!.add![0].desc).toContain('三点法力');
     expect(deriveMemory(target.chat).skills[0].desc).toBe('新版');
     expect(deriveMemory(target.chat).npcs[0].skills).toContain('霜盾');
   });
@@ -241,12 +326,12 @@ describe('独立、绝对覆盖、可回滚的角色补丁', () => {
     const changed = patch({ affinityInner: 2, affinityOuter: 2 });
     const chat = [base(), changed];
     expect(deriveMemory(chat, 1).npcs[0]).toMatchObject(initial);
-    changed.extra!.bbs_omit = true;
+    changed.extra!.bbs2_omit = true;
     expect(deriveMemory(chat).npcs[0]).toMatchObject(initial);
-    changed.extra!.bbs_omit = false;
+    changed.extra!.bbs2_omit = false;
     changed.swipe_id = 1;
     expect(deriveMemory(chat).npcs[0]).toMatchObject(initial);
-    delete changed.extra!.bbs_leaf;
+    delete changed.extra!.bbs2_leaf;
     expect(deriveMemory(chat).npcs[0]).toMatchObject(initial);
   });
   it('角色新增/校正/改名往返保留两侧,无关编辑不写入好感补丁', () => {
@@ -254,7 +339,7 @@ describe('独立、绝对覆盖、可回滚的角色补丁', () => {
     useChat(chat);
     expect(upsertNpc(initial)).toBe(true);
     expect(editNpc(name, { title: '新身份' })).toBe(true);
-    const unrelated = chat[1].extra!.bbs_leaf!.delta.npcs!.update!.at(-1)!;
+    const unrelated = chat[1].extra!.bbs2_leaf!.delta.npcs!.update!.at(-1)!;
     expect(unrelated.affinityInner).toBeUndefined();
     expect(unrelated.affinityOuter).toBeUndefined();
     expect(editNpc(name, { name: '新名字' })).toBe(true);
@@ -329,7 +414,7 @@ describe('离场同步与在场对账', () => {
   });
   it('摘要名册按本楼之前的状态标在场,离场去向未明标所在不明', async () => {
     const second = message();
-    delete second.extra!.bbs_leaf;
+    delete second.extra!.bbs2_leaf;
     const chat = [sceneLeaf(), second];
     useChat(chat);
     vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
@@ -431,7 +516,7 @@ describe('摘要与主对话的提示词边界', () => {
 describe('实际摘要入口与跨对话继承', () => {
   it('摘要用旧基线,解析 AI 的单侧更新,下一轮不变则保持', async () => {
     const second = message();
-    delete second.extra!.bbs_leaf;
+    delete second.extra!.bbs2_leaf;
     const chat = [base(), second];
     useChat(chat);
     vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
@@ -442,9 +527,9 @@ describe('实际摘要入口与跨对话继承', () => {
     const request = vi.mocked(client.requestViaMainApi).mock.calls[0][0].map(m => m.content).join('\n');
     expect(request).toContain('内心好感:有好感;外在态度:冷淡疏远');
     expect(request).toContain('性格:嘴硬、护短');
-    expect(chat[1].extra!.bbs_leaf!.delta.npcs!.update![0].affinityOuter).toBeUndefined();
+    expect(chat[1].extra!.bbs2_leaf!.delta.npcs!.update![0].affinityOuter).toBeUndefined();
     expect(memory.npcs[0]).toMatchObject({ affinityInner: 2, affinityOuter: -1 });
-    const third = message(); delete third.extra!.bbs_leaf; chat.push(third);
+    const third = message(); delete third.extra!.bbs2_leaf; chat.push(third);
     vi.mocked(client.requestViaMainApi).mockResolvedValue(JSON.stringify({ summary: '一起喝茶。', timeStart: '2026/9/13 10:05', timeEnd: '2026/9/13 10:10' }));
     await summarizeFloor(2);
     expect(memory.npcs[0]).toMatchObject({ affinityInner: 2, affinityOuter: -1, affinityNote: '相救表现出更深在意,外在仍冷淡' });
@@ -461,7 +546,7 @@ describe('实际摘要入口与跨对话继承', () => {
     vi.spyOn(inject, 'refreshInjection').mockImplementation(() => {});
     expect(await createNewChatWithCarryover()).toBe(true);
     expect(JSON.stringify(chat)).toBe(before);
-    expect(target.chat[0].extra!.bbs_leaf!.delta.npcs!.add![0]).toMatchObject({ name, affinityInner: null, affinityOuter: 0, affinityNote: '尚不知内心' });
+    expect(target.chat[0].extra!.bbs2_leaf!.delta.npcs!.add![0]).toMatchObject({ name, affinityInner: null, affinityOuter: 0, affinityNote: '尚不知内心' });
     expect(deriveMemory(target.chat).npcs[0]).toMatchObject({ affinityInner: null, affinityOuter: 1, affinityNote: '尚不知内心' });
   });
 });

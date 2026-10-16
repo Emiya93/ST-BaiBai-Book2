@@ -42,7 +42,7 @@ export interface ApiChannel {
    * OPENAI_REASONING_EFFORT_MODELS,精确匹配 o1/o3/gpt-5 那批),模型名对不上就**静默丢弃且照样返回 200**——
    * 用户设了却毫无效果、还看不出来。custom 源的 custom_include_body 是纯 merge,不过白名单。
    *
-   * 跨插件:与柏宝绘/柏宝砚共享同一份渠道(baibai_api_channels),三家字段名一致。
+   * 字段保持与原版柏宝系列渠道协议一致；改版使用独立存储，不回写原版渠道。
    */
   reasoningEffort: string;
 }
@@ -199,7 +199,7 @@ export interface ApiSettings {
    * 也不再把物品/变量变动旁注写回正文。已有正文旁注不主动清理。
    */
   summaryOnlyMode: boolean;
-  /** 技能页签、主要角色技能栏及模型技能协议的总开关；默认关闭。 */
+  /** 技能页签、主要角色技能栏及模型技能协议的总开关；默认开启。 */
   skillsEnabled: boolean;
   /** 注入设置:各状态块是否注入主模型(仅摘要模式开启时整组不生效) */
   injection: InjectionSections;
@@ -256,17 +256,18 @@ export interface ApiSettings {
 }
 
 // extension_settings 里的命名空间键;localStorage 是旧版残留,仅用于一次性迁移。
-const SETTINGS_KEY = 'baibai_book';
-const SHARED_CHANNELS_KEY = 'baibai_api_channels';
-const SHARED_CHANNELS_EVENT = 'st-baibai-api-channels:changed';
+const SETTINGS_KEY = 'baibai_book2';
+const ORIGINAL_SETTINGS_KEY = 'baibai_book';
+const SHARED_CHANNELS_KEY = 'baibai2_api_channels';
+const SHARED_CHANNELS_EVENT = 'st-baibai2-api-channels:changed';
 const SHARED_CHANNELS_SCHEMA_VERSION = 1;
 
-/* —— 排除设置共享存储:与柏宝绘等「柏宝」插件共用同一份排除名单(渠道同款协议) ——
-   真身存在 extensionSettings[SHARED_EXCLUDES_KEY](带 revision),各插件的设置里只留镜像。
-   任一端写入后广播事件,其他端收到后从 extensionSettings 重读并应用,实现跨插件实时同步。
+/* —— 改版独立的排除设置存储；首次从原版共享名单复制，后续不回写原版 ——
+   真身存在 extensionSettings[SHARED_EXCLUDES_KEY](带 revision)，改版设置保留镜像。
+   改版自用独立事件，不监听原版或其他柏宝插件的共享事件。
    双端语义一致:排除角色=功能停用、整本/条目名排除=副API世界书过滤、清洗标签=正文整块删除。 */
-const SHARED_EXCLUDES_KEY = 'baibai_exclude_settings';
-const SHARED_EXCLUDES_EVENT = 'st-baibai-exclude-settings:changed';
+const SHARED_EXCLUDES_KEY = 'baibai2_exclude_settings';
+const SHARED_EXCLUDES_EVENT = 'st-baibai2-exclude-settings:changed';
 const SHARED_EXCLUDES_SCHEMA_VERSION = 1;
 
 interface SharedChannelsStore {
@@ -287,9 +288,9 @@ interface SharedExcludesStore {
 /** 条目名过滤的内置默认规则:首次载入时「播种」进用户列表(见 hydrateSettings),之后用户可自由增删。
  *  \[mvu…\] = 过滤变量框架 MVU 的机制条目(对剧情摘要是纯噪音)。大小写不敏感(engine 编译带 i)。 */
 const DEFAULT_WI_PATTERNS = ['\\[mvu[\\s\\S]*?\\]'];
-const LEGACY_STORAGE_KEY = 'bbs.api.v1';
+const LEGACY_STORAGE_KEY = 'bbs2.api.v1';
 // 旧版界面偏好(主题/导航位置/分页)曾单独存这里;现把主题+导航迁进 ui,分页仍留本机(见 state/ui.ts)。
-const LEGACY_UI_STORAGE_KEY = 'bbs.ui.v1';
+const LEGACY_UI_STORAGE_KEY = 'bbs2.ui.v1';
 
 /** 从旧 localStorage(bbs.ui.v1)取出主题/导航位置,填进 target.ui。仅在 server 尚无 ui 时调用一次。 */
 function migrateLegacyUiPrefs(target: ApiSettings): void {
@@ -344,7 +345,7 @@ function defaults(): ApiSettings {
     assignments: { summary: '', resummary: '' },
     autoSummaryEnabled: true,
     summaryOnlyMode: false,
-    skillsEnabled: false,
+    skillsEnabled: true,
     injection: { sceneFocus: true, lifeDetails: true, protagonist: true, npcs: true, npcAffinity: true, items: true, scenes: true },
     keepRecent: 3,
     excludedChars: [],
@@ -373,7 +374,8 @@ function normalize(raw: unknown): ApiSettings {
   if (!raw || typeof raw !== 'object') return defaults();
   const d = defaults();
   const merged = { ...d, ...(raw as Partial<ApiSettings>) };
-  merged.skillsEnabled = (raw as Partial<ApiSettings>).skillsEnabled === true;
+  merged.skillsEnabled = typeof (raw as Partial<ApiSettings>).skillsEnabled === 'boolean'
+    ? (raw as Partial<ApiSettings>).skillsEnabled! : d.skillsEnabled;
   // prompts 是嵌套对象,展开合并不会补全缺字段,单独兜底(老数据没有 prompts 键时回退默认)
   merged.prompts = { ...d.prompts, ...((raw as Partial<ApiSettings>).prompts ?? {}) };
   // ui 同为嵌套对象,逐字段兜底(老数据没有 ui 键时回退默认,值非字符串时丢弃)
@@ -847,6 +849,45 @@ export function hydrateSettings(): void {
   if (ready) return;
   const ctx = getContext();
   if (!ctx?.extensionSettings) return; // ST 未就绪,稍后重试
+
+  // 原版并非把配置写在插件目录里；首次仅复制其酒馆存储，之后独立读写改版命名空间。
+  const settings = ctx.extensionSettings;
+  if (!settings[SETTINGS_KEY] || typeof settings[SETTINGS_KEY] !== 'object') {
+    let original = settings[ORIGINAL_SETTINGS_KEY];
+    if (!original || typeof original !== 'object') {
+      try { original = JSON.parse(localStorage.getItem('bbs.api.v1') || 'null'); } catch { /* 无旧配置则使用默认值 */ }
+    }
+    if (original && typeof original === 'object' && !Array.isArray(original)) {
+      const inherited = normalize(JSON.parse(JSON.stringify(original)));
+      // 新增功能使用改版默认值，不从原版不认识的配置推断开关。
+      inherited.skillsEnabled = defaults().skillsEnabled;
+      if (!('ui' in original)) {
+        try {
+          const oldUi = JSON.parse(localStorage.getItem('bbs.ui.v1') || 'null');
+          if (oldUi && typeof oldUi === 'object') inherited.ui = normalize({ ui: oldUi }).ui;
+        } catch { /* 界面偏好损坏不影响其他设置 */ }
+      }
+      settings[SETTINGS_KEY] = JSON.parse(JSON.stringify(inherited));
+    }
+    for (const [originalKey, ownKey] of [
+      ['baibai_api_channels', SHARED_CHANNELS_KEY],
+      ['baibai_exclude_settings', SHARED_EXCLUDES_KEY],
+    ]) {
+      if (settings[ownKey] === undefined && settings[originalKey] !== undefined) {
+        settings[ownKey] = JSON.parse(JSON.stringify(settings[originalKey]));
+      }
+    }
+    // 纯本机界面状态也复制到独立键，绝不清理原版的旧键。
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key?.startsWith('bbs.')) continue;
+        const ownKey = key.replace(/^bbs\./, 'bbs2.');
+        if (localStorage.getItem(ownKey) === null) localStorage.setItem(ownKey, localStorage.getItem(key)!);
+      }
+    } catch { /* 本机存储不可用不影响服务器设置继承 */ }
+    ctx.saveSettingsDebounced?.();
+  }
 
   const stored = ctx.extensionSettings[SETTINGS_KEY];
   if (stored && typeof stored === 'object') {

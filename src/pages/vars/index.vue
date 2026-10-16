@@ -134,7 +134,7 @@ const exportText = computed(() => {
   const json = mergeTemplates(memory.varTemplates);
   const meaning = TIER_ORDER.map(t => memory.varTemplates[t].meaning.trim()).filter(Boolean).join('\n\n');
   const rule = TIER_ORDER.map(t => memory.varTemplates[t].rule.trim()).filter(Boolean).join('\n\n');
-  return JSON.stringify({ app: 'ST-BaiBai-Book', kind: 'vars', version: 3, json, meaning, rule }, null, 2);
+  return JSON.stringify({ app: 'ST-BaiBai-Book2', kind: 'vars', version: 3, json, meaning, rule }, null, 2);
 });
 const hasAnyTemplate = computed(() => {
   void derivedMeta.rev;

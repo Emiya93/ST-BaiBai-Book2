@@ -2,7 +2,7 @@
  * 从 Horae 迁移记忆数据。
  *
  * 关键事实:Horae 与柏宝书共用**同一批聊天文件的同一批消息对象**——Horae 把数据挂在
- * `chat[i].horae_meta`,柏宝书挂在 `chat[i].extra.bbs_leaf`,两者并存于同一条 msg 上。
+ * `chat[i].horae_meta`,柏宝书挂在 `chat[i].extra.bbs2_leaf`,两者并存于同一条 msg 上。
  * 所以迁移直接读「当前打开聊天」的 `ctx.chat[i].horae_meta` 产出柏宝书数据,不跨文件。
  * 范式照搬 carryover.ts:读源 → 造叶子(挂 extra)+ 森林(写 metadata)+ 把最终状态编码成种子 delta。
  *
@@ -254,7 +254,7 @@ export function computeMigrationPlan(): MigrationPlan {
 
 /** chat 上是否已有柏宝书叶子(用于「将覆盖」提示)。 */
 function hasAnyLeaf(chat: STMessage[]): boolean {
-  return chat.some(m => !!m?.extra?.bbs_leaf);
+  return chat.some(m => !!m?.extra?.bbs2_leaf);
 }
 
 /* ============ 执行迁移 ============ */
@@ -321,7 +321,7 @@ export async function runHoraeMigration(): Promise<boolean> {
           swipe: typeof chat[idx].swipe_id === 'number' ? chat[idx].swipe_id : 0,
           v: 1,
         };
-        chat[idx].extra = { ...(chat[idx].extra ?? {}), bbs_leaf: leaf };
+        chat[idx].extra = { ...(chat[idx].extra ?? {}), bbs2_leaf: leaf };
         leafIdByFloor.set(idx, leaf.id);
         lastLeafFloor = idx;
       }
@@ -346,13 +346,13 @@ export async function runHoraeMigration(): Promise<boolean> {
         swipe: typeof chat[idx].swipe_id === 'number' ? chat[idx].swipe_id : 0,
         v: 1,
       };
-      chat[idx].extra = { ...(chat[idx].extra ?? {}), bbs_leaf: leaf };
+      chat[idx].extra = { ...(chat[idx].extra ?? {}), bbs2_leaf: leaf };
       leafIdByFloor.set(idx, leaf.id);
       lastLeafFloor = idx;
     }
 
     if (lastLeafFloor >= 0) {
-      const seedLeaf = chat[lastLeafFloor].extra!.bbs_leaf as LeafExtra;
+      const seedLeaf = chat[lastLeafFloor].extra!.bbs2_leaf as LeafExtra;
       const delta: StoredDelta = seedLeaf.delta ?? (seedLeaf.delta = {});
       if (items.length) delta.items = { add: items };
       if (plans) delta.plans = plans;

@@ -7,7 +7,7 @@ import type { StoredDelta } from './types';
 let seq = 0;
 const message = (delta: StoredDelta): STMessage => ({
   name: '艾琳', is_user: false, is_system: false, mes: '一段明确发生的剧情。',
-  extra: { bbs_leaf: { id: `cond-${++seq}`, text: '剧情摘要', delta, createdAt: seq, swipe: 0, v: 1 } },
+  extra: { bbs2_leaf: { id: `cond-${++seq}`, text: '剧情摘要', delta, createdAt: seq, swipe: 0, v: 1 } },
 });
 
 describe('conditionPatch 片段切分', () => {

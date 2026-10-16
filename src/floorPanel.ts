@@ -18,8 +18,8 @@ import { apiSettings, engineActiveHere } from '@/api/settings';
 import { watch } from 'vue';
 import { versionedAssetUrl } from '@/version';
 
-const HOST_CLASS = 'bbs-fp-host';
-const MARK_ATTR = 'data-bbs-fp'; // 标在 .mes 上,防重复注入
+const HOST_CLASS = 'bbs2-fp-host';
+const MARK_ATTR = 'data-bbs2-fp'; // 标在 .mes 上,防重复注入
 
 let enabled = false;
 let observer: MutationObserver | null = null;
@@ -82,11 +82,11 @@ function attachStyles(root: ShadowRoot): void {
     return;
   }
   const href = resolveCssHref();
-  if (href && !root.querySelector('link[data-bbs-fp-css]')) {
+  if (href && !root.querySelector('link[data-bbs2-fp-css]')) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = href;
-    link.setAttribute('data-bbs-fp-css', '');
+    link.setAttribute('data-bbs2-fp-css', '');
     root.appendChild(link);
   }
 }
@@ -117,7 +117,7 @@ function injectFloor(idx: number): void {
 
   const host = document.createElement('div');
   host.className = HOST_CLASS;
-  host.setAttribute('data-bbs-fp-floor', String(idx));
+  host.setAttribute('data-bbs2-fp-floor', String(idx));
   const root = host.attachShadow({ mode: 'open' });
   guardEditableArrowKeys(root);
   attachStyles(root);

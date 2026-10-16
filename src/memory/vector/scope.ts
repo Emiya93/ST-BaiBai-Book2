@@ -5,13 +5,23 @@
  * 删角色 = 删那一个库文件,不牵连其他角色。
  * 库内用 scope 区分集合:
  *   'chat:<chatId>'    当前聊天边玩边索引
- *   'bundle:<hash>'    带数据建新聊天冻结的快照(写在 metadata.bbs_bundles)
+ *   'bundle:<hash>'    带数据建新聊天冻结的快照(写在 metadata.bbs2_bundles)
  */
 
 import { getContext } from '@/st/context';
 
 /** metadata 上存哈希包列表的字段名(随 chat 文件走,ST 原生分支会物理拷贝) */
-export const BUNDLES_META_KEY = 'bbs_bundles';
+export const BUNDLES_META_KEY = 'bbs2_bundles';
+/** 从原版复制的不可变 bundle 的只读来源；改版不会对这个库做对账、清空或写入。 */
+export const LEGACY_BUNDLES_META_KEY = 'bbs2_legacy_bundles';
+
+export function legacyBundleSource(): { database: string; hashes: string[] } | null {
+  const raw = getContext()?.chatMetadata?.[LEGACY_BUNDLES_META_KEY];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  if (typeof source.database !== 'string' || !Array.isArray(source.hashes)) return null;
+  return { database: source.database, hashes: source.hashes.filter((hash: unknown): hash is string => typeof hash === 'string' && !!hash) };
+}
 
 /**
  * 把任意字符串(角色 avatar)折成合法库名。
@@ -26,7 +36,7 @@ function avatarToDbName(avatar: string): string {
   }
   // 再掺入长度做轻量去碰撞;转无符号 16 进制
   const hex = ((h >>> 0).toString(16) + (avatar.length & 0xffff).toString(16)).padStart(8, '0');
-  return `bbs_vec_${hex}`;
+  return `bbs2_vec_${hex}`;
 }
 
 /** 当前角色对应的向量库名;群聊/未进入角色时返回 null(不索引)。 */

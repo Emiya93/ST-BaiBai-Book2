@@ -744,7 +744,7 @@ export function makeLeafId(): string {
 
 /** 取消息上的叶子(不校验有效性) */
 export function getLeaf(m: STMessage | undefined): LeafExtra | undefined {
-  return m?.extra?.bbs_leaf as LeafExtra | undefined;
+  return m?.extra?.bbs2_leaf as LeafExtra | undefined;
 }
 
 /** 叶子结构是否完整(有 id + delta)。不校验页码归属;供 pruneBrokenComps 判「叶子是否物理存在」。 */
@@ -783,7 +783,7 @@ function msgSwipe(m: STMessage): number {
 /**
  * 叶子是否对「当前显示的这一页」有效:结构完整 + 页码归属当前 swipe。
  *
- * 页码校验解决多页串扰:ST 生成新 swipe 时 structuredClone 旧 extra,会把上一页的 bbs_leaf
+ * 页码校验解决多页串扰:ST 生成新 swipe 时 structuredClone 旧 extra,会把上一页的 bbs2_leaf
  * 复制进新页;靠「叶子 swipe ≠ 当前 swipe_id」识别并失效——翻到没摘过的页正确显示「缺摘要」,
  * 翻回原页页码又匹配、摘要恢复。叶子数据始终留在各自 swipe 的 extra 里,不删除。
  *
@@ -1581,7 +1581,7 @@ export function deriveMemory(
   if (!chat) return { state: mem.state, protagonist: mem.protagonist, items: mem.items, skills: mem.skills, plans: mem.plans, scenes: mem.scenes, npcs: mem.npcs, itemLog: mem.itemLog, lifeDetails: mem.lifeDetails, vars: mem.vars };
   const end = typeof upToExclusive === 'number' ? Math.min(upToExclusive, chat.length) : chat.length;
   for (let i = 0; i < end; i++) {
-    if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不参与派生重放
+    if (chat[i]?.extra?.bbs2_omit) continue; // 番外楼:不参与派生重放
     if (!leafValid(chat[i])) continue;
     const leaf = getLeaf(chat[i])!;
     // 日志用「故事内时间」:结束时间优先(本段最后时刻),缺则起始,再缺旧 timeLabel,最后空串
@@ -1661,6 +1661,7 @@ export function syncItemLogFromMessage(index: number): boolean {
   const currentInline = fmtItemLogInline(itemChangesOf(leaf.delta, prior, time));
 
   const tagText = readItemsTagText(chat[index].mes); // null = 无块
+  if (leaf.legacyLedger && tagText === null) return false;
   const editedInline = tagText === null ? '' : fmtItemLogInline(parsedToLog(parseItemLogText(tagText), prior));
 
   if (currentInline === editedInline) return false; // 物品旁注未变,跳过
@@ -1683,12 +1684,13 @@ export function syncItemLogFromMessage(index: number): boolean {
     };
   } else delete leaf.delta.items;
 
-  chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
+  chat[index].extra = { ...(chat[index].extra ?? {}), bbs2_leaf: leaf };
 
   // 正文旁注重写成规范格式(用规范化后的 delta 重新渲染)
   if (!apiSettings.summaryOnlyMode) {
     const canonical = fmtItemLogInline(itemChangesOf(leaf.delta, prior, time));
     setMessageText(chat[index], writeItemLogTag(chat[index].mes, canonical));
+    delete leaf.legacyLedger;
   }
 
   recomputeDerived();
@@ -2028,7 +2030,7 @@ export function appendOpToLatestLeaf(op: StoredDelta): boolean {
   if (!changed) return false;
 
   // 重设 extra 引用以确保持久化带上改动
-  chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
+  chat[index].extra = { ...(chat[index].extra ?? {}), bbs2_leaf: leaf };
 
   recomputeDerived();
   pruneBrokenComps();
@@ -2306,8 +2308,8 @@ export function removeScene(path: string[]): boolean {
 /** 删除某条消息上的叶子(清 extra),然后级联删坏链 + 重算 + 落盘 */
 export function deleteLeafAt(index: number): boolean {
   const chat = getContext()?.chat;
-  if (!chat || !chat[index]?.extra?.bbs_leaf) return false;
-  delete (chat[index].extra as Record<string, unknown>).bbs_leaf;
+  if (!chat || !chat[index]?.extra?.bbs2_leaf) return false;
+  delete (chat[index].extra as Record<string, unknown>).bbs2_leaf;
   recomputeDerived();
   pruneBrokenComps();
   scheduleLeafFlush();
@@ -2336,7 +2338,7 @@ export function editLeafAt(index: number, text: string, timeStart: string, timeE
   if (e) leaf.delta.time = e;
   else if (s) leaf.delta.time = s;
   else delete leaf.delta.time;
-  chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
+  chat[index].extra = { ...(chat[index].extra ?? {}), bbs2_leaf: leaf };
   recomputeDerived();
   scheduleLeafFlush();
   invalidateRecallCache(); // 摘要变了 → 召回结果会变,先失效再重算
@@ -2369,7 +2371,7 @@ export function editLeafFull(
   else if (s) delta.time = s;
   else delete delta.time;
   leaf.delta = delta;
-  chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
+  chat[index].extra = { ...(chat[index].extra ?? {}), bbs2_leaf: leaf };
   // 编辑改了 delta → 同步重写该楼正文的 <bbs_items>/<bbs_vars> 旁注(否则旁注停留在上次摘要的旧值),
   // 与 applyLeafForFloor 落叶时同口径:物品净变动以「本楼之前状态」为基准算 from→to,变量直接渲染命令。
   rewriteFloorTags(chat, index, delta);
@@ -2393,6 +2395,7 @@ function rewriteFloorTags(chat: STMessage[], index: number, delta: StoredDelta):
   let mes = writeItemLogTag(chat[index].mes, fmtItemLogInline(itemChangesOf(delta, priorItems, time)));
   mes = writeVarLogTag(mes, fmtVarOpsInline(delta.varOps));
   setMessageText(chat[index], mes);
+  if (leaf) delete leaf.legacyLedger;
 }
 
 /**
@@ -2429,7 +2432,7 @@ export function editPlan(
   if (patch.createdTime !== undefined) add.createdTime = patch.createdTime.trim() || undefined;
   if (patch.targetTime !== undefined) add.targetTime = patch.targetTime.trim() || undefined;
 
-  chat[index].extra = { ...(chat[index].extra ?? {}), bbs_leaf: leaf };
+  chat[index].extra = { ...(chat[index].extra ?? {}), bbs2_leaf: leaf };
   recomputeDerived();
   scheduleLeafFlush();
   return true;
@@ -2517,7 +2520,7 @@ export function deleteSummarySubtrees(rootIds: string[]): DeleteSummarySubtreesR
     for (const message of chat) {
       const leaf = getLeaf(message);
       if (!leaf || !leafIds.has(leaf.id)) continue;
-      delete (message.extra as Record<string, unknown>).bbs_leaf;
+      delete (message.extra as Record<string, unknown>).bbs2_leaf;
       leaves++;
     }
   }
