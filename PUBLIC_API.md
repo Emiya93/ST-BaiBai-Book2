@@ -144,7 +144,7 @@ console.log(snapshot.lifeDetails);
 
 两侧都可能缺失或为 `null`，表示未知，不能按 `0` 处理。楼层 delta 中省略字段表示保持，`null` 表示撤回该侧估计，`affinityNote: ""` 表示清空说明。估计不等于已证实的心理事实，也不代表爱情、信任、服从或同意。
 
-`snapshot.skills` 是主角技能数组，每项包含 `id`、`name`、可选的 `desc`、`createdAt` 和 `updatedAt`。主要角色的技能说明存于 `snapshot.npcs[].skills`（可选字符串）。技能开关默认开启，只控制技能界面、新增自动提取和模型提示词；公开只读快照仍保留已有技能数据，便于备份和历史查询。
+`snapshot.skills` 是主角技能数组，每项包含 `id`、`name`、可选的 `desc`、`createdAt` 和 `updatedAt`。主要角色的技能说明存于 `snapshot.npcs[].skills`（可选字符串）。技能开关默认开启，只控制技能界面、新增自动提取和模型提示词；公开只读快照仍保留已有技能数据，便于备份和历史查询。「注入设置 → 技能信息」只控制自动发给主模型的技能状态，不过滤公开读取接口。
 
 `snapshot.lifeDetails` 为按人物记录的生活小档案。`subject: "user"` 表示主角，其他字符串为角色在 NPC 名册中的名字；旧叶子缺少 `subject` 时按原有主角专用语义处理，不从正文猜人物。`text` 是该人物的细节正文，显示或注入时会加上姓名。相同内容按人物分别去重，不能跨人合并。
 
@@ -260,7 +260,7 @@ const result = globalThis.STBaiBaiBook2.query({
 支持的 `resource`：
 
 ```text
-var, vars, state, protagonist, items, plans, scenes, npcs, itemLog,
+var, vars, state, protagonist, items, skills, plans, scenes, npcs, itemLog,
 snapshot, history, injectedHistory, floor, context
 ```
 
@@ -318,6 +318,7 @@ window.addEventListener('st-baibai-book2:changed', event => {
 
 ```text
 /bbs2-get resource=snapshot
+/bbs2-get resource=skills
 /bbs2-get resource=var path="关系.爱丽丝.好感度" floor=42 at=after format=raw
 /bbs2-get resource=history before=42 format=text
 /bbs2-get resource=injectedHistory format=text

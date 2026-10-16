@@ -45,7 +45,7 @@ summary 是事件记忆,记录具体言行、条件与后果。其他字段分�
 
 {
   "summary": "本轮剧情摘要,见下方【摘要撰写规则】。",
-  "stateChanges": ["location", "locationPath", "protagonist", "sceneFocus", "items", "scenes", "npcs", "plans", "lifeDetails", "vars"],
+  "stateChanges": [{{state_changes_json}}],
 {{time_field}}
   "location": "本轮结束时主角所在地点(有变化才写,仅细化到已证实的程度;在途保留在途,不把目的地当到达)",
   "locationPath": ["在【已知地点】里、与上面 location 对应的场景节点完整路径,由粗到细(可比 location 粗)。仅填有明确归属证据的已知路径;无法对应填 [],不继承旧地点归属"],
@@ -368,7 +368,7 @@ reason 必填一句,写清「为什么了结 / 如何收场」,不为解释完�
 - 摘要、快照及计划reason均不自行增加提前/迟到多少天或持续多久;原文未明说时差就记实际时点与必要期限,或仅记已提前/按时/逾期的有据结论。同日早晚不写成相隔一天,时段不扩写成具体时长。
 
 【状态核对】
-- stateChanges 必填，仅列本次 JSON 实际有效输出的 location、locationPath、sceneFocus、protagonist、items、scenes、npcs、plans、lifeDetails、vars；不含 summary 或时间字段。没有变化填写 []，不能把清单代替实际操作。
+- stateChanges 必填，仅列本次 JSON 实际有效输出的 {{state_changes_names}}；不含 summary 或时间字段。没有变化填写 []，不能把清单代替实际操作。
 - 先对比本楼之前的档案与本楼结束状态，再写增量：符合准入的新人物/本楼明确新获物品须建档,首次提到旧持有物不强制 add；原本未知位置的人物明确重现须更新位置；归还/交付须更新物品；履约/取消须核销当前计划,同一事项的改期/暂缓须update,明确替代则处理旧方案。不能因这些事已经写在 summary 中而省略对应字段。
 - 例：已有借用物品归还且约定完成，输出 items.remove 和 plans.resolve，并在 stateChanges 中列出 "items"、"plans"；人物重新出现则同时更新 npcs。若本楼只有观察、对话且确无状态变化，允许 summary 配 stateChanges:[]，不要为凑字段编造变动。
 

@@ -5,6 +5,8 @@ import * as settings from '@/api/settings';
 import * as context from '@/st/context';
 import type { STContext, STMessage } from '@/st/context';
 import * as notices from '@/st/toast';
+import { query } from '@/public/query';
+import type { MemSkill } from './types';
 import { appendOpToLatestLeaf, classifyNpcPresence, deriveMemory, editLeafFull, editNpc, finalizeDelta, setNpcFollow, upsertNpc } from './apply';
 import { rewriteQuery } from './vector/rewrite';
 import * as embeddings from './vector/embed';
@@ -15,7 +17,7 @@ import * as inject from './inject';
 import { affinityLevelFromInput, applyNpcAffinity, cleanNpcAffinityLevel, fmtNpcAffinity, fmtNpcSummaryList, NPC_AFFINITY_BRIEFING } from './npcRelations';
 import { buildSummaryPrompt, RULE_NPC_AFFINITY } from './prompts';
 import { inheritOriginalMemory, loadMemory, memory, recomputeDerived, saveMemory } from './store';
-import { deleteLeafAt, syncItemLogFromMessage } from './apply';
+import { deleteLeafAt, deleteSummarySubtrees, syncItemLogFromMessage } from './apply';
 import { MEMORY_KEY, ORIGINAL_MEMORY_KEY } from './types';
 import { currentVectorDb, LEGACY_BUNDLES_META_KEY } from './vector/scope';
 import { cleanBody, writeItemLogTag, writeVarLogTag } from './timeTag';
@@ -205,6 +207,43 @@ describe('技能台账与角色技能', () => {
     expect(editNpc('艾琳娜', { skills: '' })).toBe(true);
     expect(memory.npcs[0].skills).toBeUndefined();
   });
+  it('跨楼仅修改技能名大小写也应保存，回退楼层时恢复旧名称', () => {
+    const chat = [message({ skills: { add: [{ name: 'Fireball', desc: '火球术' }] } }), message({})];
+    useChat(chat);
+    expect(appendOpToLatestLeaf({ skills: { update: [{ name: 'FIREBALL' }] } })).toBe(true);
+    expect(memory.skills).toHaveLength(1);
+    expect(memory.skills[0]).toMatchObject({ id: 'skill:fireball', name: 'FIREBALL', desc: '火球术' });
+    expect(deriveMemory(chat, 1).skills[0].name).toBe('Fireball');
+  });
+  it('技能可单独公开查询、按楼回溯，关闭开关也保留只读数据且返回值不能改原记录', () => {
+    const chat = [message(known()), message({ skills: { update: [{ name: '星火术', desc: '升级后的效果' }] } })];
+    useChat(chat);
+    settings.apiSettings.skillsEnabled = false;
+    settings.apiSettings.injection.skills = false;
+    expect(query({ resource: 'skills', floor: 0, at: 'before' })).toEqual([]);
+    const before = query({ resource: 'skills', floor: 1, at: 'before' }) as MemSkill[];
+    expect(before[0].desc).toContain('三点法力');
+    const current = query({ resource: 'skills' }) as MemSkill[];
+    expect(current[0].desc).toBe('升级后的效果');
+    current[0].name = '不能改到原记录';
+    expect((query({ resource: 'skills' }) as MemSkill[])[0].name).toBe('星火术');
+    chat[1].extra!.bbs2_omit = true;
+    expect((query({ resource: 'skills' }) as MemSkill[])[0].desc).toContain('三点法力');
+  });
+  it('删除后续总结回退技能升级，删除原始摘要才移除技能，不修改原版副本', () => {
+    const chat = [message(known()), message({ skills: { update: [{ name: '星火术', desc: '升级后的效果' }] }, npcs: { update: [{ name, skills: '升级后的霜盾' }] } })];
+    chat[0].extra!.bbs_leaf = structuredClone(chat[0].extra!.bbs2_leaf);
+    const originalLeaf = structuredClone(chat[0].extra!.bbs_leaf);
+    useChat(chat);
+    memory.summaries.push({ id: 'skills-comp', text: '技能升级经过', level: 1, createdAt: 1, auto: false, childIds: [chat[1].extra!.bbs2_leaf!.id] });
+    expect(deleteSummarySubtrees(['skills-comp'])).toMatchObject({ leaves: 1, summaries: 1 });
+    expect(memory.skills[0].desc).toContain('三点法力');
+    expect(memory.npcs[0].skills).toBe('霜盾：抵挡一次攻击');
+    expect(memory.items[0].qty).toBe(1);
+    expect(deleteLeafAt(0)).toBe(true);
+    expect(memory.skills).toEqual([]);
+    expect(chat[0].extra!.bbs_leaf).toEqual(originalLeaf);
+  });
   it('末楼为番外时，技能和其他手动状态写入最近的主线摘要', () => {
     const main = message(known());
     const omitted = message({}); omitted.extra!.bbs2_omit = true;
@@ -297,6 +336,14 @@ describe('技能台账与角色技能', () => {
     settings.apiSettings.injection.scenes = false;
     expect(inject.buildStateInjectionText()).toContain('星火术');
     expect(inject.buildStateInjectionText()).not.toContain('霜盾');
+  });
+  it('只剩技能时开启才产生状态块，关闭注入不会留下空状态框', () => {
+    settings.apiSettings.skillsEnabled = true;
+    useChat([message({ skills: { add: [{ name: '星火术' }] } })]);
+    expect(inject.buildStateInjectionText()).toContain('星火术');
+    settings.apiSettings.injection.skills = false;
+    expect(inject.buildStateInjectionText()).toBe('');
+    expect(memory.skills[0].name).toBe('星火术');
   });
   it('手动编辑技能立即刷新实际提示槽，普通重放不反复清空召回缓存', async () => {
     settings.apiSettings.skillsEnabled = true;

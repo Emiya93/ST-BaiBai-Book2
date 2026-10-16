@@ -724,7 +724,7 @@ function floorLabel(r: SummaryRow): string {
 
 async function onDelete(r: SummaryRow) {
   if (r.kind === 'leaf') {
-    if (!confirm('删除这条摘要?它带来的物品、计划、时间地点变化会按剩余摘要重新计算(可能回退);包含它的总结也会一并删除。原文楼层仍保持隐藏。')) return;
+    if (!confirm('删除这条摘要?它带来的物品、技能、角色、计划、时间地点变化会按剩余摘要重新计算(可能回退);包含它的总结也会一并删除。原文楼层仍保持隐藏。')) return;
     if (typeof r.msgIndex === 'number') deleteLeafAt(r.msgIndex);
   } else {
     if (r.imported) {
@@ -734,7 +734,7 @@ async function onDelete(r: SummaryRow) {
       await syncHiddenNow(true);
       return;
     }
-    if (!confirm('删除这条总结?被它收纳的下层摘要会重新展开,物品/计划等不受影响。')) return;
+    if (!confirm('删除这条总结?被它收纳的下层摘要会重新展开,物品/技能/角色/计划等不受影响。')) return;
     deleteSummary(r.id);
   }
   refreshInjection();
@@ -1256,7 +1256,7 @@ provide(SUMMARY_CTX, {
     >
       将永久删除所选 {{ selectionSummary.count }} 个条目所代表的全部内容
       ({{ selectionDeleteSummary.leaves }} 条逐楼摘要、{{ selectionDeleteSummary.summaries }} 条总结)。
-      选中的总结所收纳的下层摘要也会一并删除；逐楼摘要带来的物品、计划、时间地点等状态会按剩余摘要重新计算，原文楼层仍保持隐藏。
+      选中的总结所收纳的下层摘要也会一并删除；逐楼摘要带来的物品、技能、角色、计划、时间地点等状态会按剩余摘要重新计算，原文楼层仍保持隐藏。
       <template v-if="selectionDeleteSummary.imported">导入历史覆盖的原文楼层会重新显示。</template>
       此操作无法撤销，继续?
     </ConfirmDialog>
@@ -1269,7 +1269,7 @@ provide(SUMMARY_CTX, {
           <button class="bbs-summary-act" type="button" title="关闭" @click="closeImportHistory"><Icon name="close" /></button>
         </header>
         <p class="bbs-field-hint bbs-import-note">
-          把使用柏宝书之前写在世界书等位置的剧情总结粘贴到这里。只导入叙事正文,不会自动生成物品、计划或角色状态。
+          把使用柏宝书之前写在世界书等位置的剧情总结粘贴到这里。只导入叙事正文,不会自动生成物品、技能、计划或角色状态。
         </p>
         <label class="bbs-modal-field">
           <span class="bbs-modal-label">旧总结正文</span>

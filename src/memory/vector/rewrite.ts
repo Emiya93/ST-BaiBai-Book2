@@ -71,7 +71,7 @@ function buildStateSnapshot(chat: STMessage[], upTo: number): string {
     lines.push(`未了结的计划/悬念:\n${fmtPlans(openPlans.map(p => ({ kind: p.kind, content: p.content, createdTime: p.createdTime, targetTime: p.targetTime })))}`);
   }
   if (!lines.length) return '';
-  return `[状态快照:以下为已滚出最近窗口、但仍有效的主角档案、物品、NPC 与未了结计划,供你解析模糊指代]\n${lines.join('\n')}`;
+  return `[状态快照:以下为已滚出最近窗口、但仍有效的主角档案、物品${apiSettings.skillsEnabled ? '、技能' : ''}、NPC 与未了结计划,供你解析模糊指代]\n${lines.join('\n')}`;
 }
 
 /**

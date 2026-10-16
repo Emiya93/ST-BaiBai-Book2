@@ -376,6 +376,8 @@ export function query(request: PublicQueryRequest): PublicQueryResult {
       return getSnapshot(snapshotOptions).protagonist;
     case 'items':
       return getSnapshot(snapshotOptions).items;
+    case 'skills':
+      return getSnapshot(snapshotOptions).skills;
     case 'plans':
       return getSnapshot(snapshotOptions).plans;
     case 'scenes':

@@ -58,7 +58,11 @@ const valid = computed(() => {
   void derivedMeta.rev;
   return leafValid(msg.value);
 });
-const d = computed<StoredDelta | null>(() => leaf.value?.delta ?? null);
+// 手动操作会原地合并 delta；返回新外壳，让依赖它的标签随叶子刷新，避免缓存旧列表。
+const d = computed<StoredDelta | null>(() => {
+  const delta = leaf.value?.delta;
+  return delta ? { ...delta } : null;
+});
 
 const expanded = ref(false);
 const busy = ref(false);
@@ -521,6 +525,7 @@ function editTag(tag: Tag) {
 }
 
 function saveTag(tag: Tag) {
+  if (tag.key.startsWith('skill:') && (!apiSettings.skillsEnabled || !edit.name.trim())) return;
   commitDelta(dd => {
     if (tag.key.startsWith('item:')) {
       if (tag.bucket === 'remove') {
@@ -876,7 +881,7 @@ const groups = computed(() => [
                           <button class="bbs-fp-editdel" type="button" title="删除此条" @click="deleteTag(tag)"><Icon name="trash" />删除</button>
                           <span class="bbs-fp-editfoot-spacer"></span>
                           <button class="bbs-btn bbs-btn-sm" type="button" @click="cancelEdit">取消</button>
-                          <button v-if="tag.editable" class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" @click="saveTag(tag)">保存</button>
+                          <button v-if="tag.editable" class="bbs-btn bbs-btn-sm bbs-btn-primary" type="button" :disabled="tag.key.startsWith('skill:') && !edit.name.trim()" @click="saveTag(tag)">保存</button>
                         </div>
                       </div>
                       <!-- 标签只读态:徽标钉左上 + 主文本一行 + 副文本(细节)另起淡色一行 -->
@@ -931,7 +936,7 @@ const groups = computed(() => [
       busyText="生成中…"
       @confirm="confirmRegenerate"
     >
-      当前摘要将被新结果替换,该楼带来的时间、物品、角色、计划等记忆会重新计算。
+      当前摘要将被新结果替换,该楼带来的时间、物品、技能、角色、计划等记忆会重新计算；技能系统关闭时保留原有技能记录。
       如果该楼已被上层总结收纳,包含它的上层总结将失效并被移除。继续?
     </ConfirmDialog>
   </div>

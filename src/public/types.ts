@@ -152,6 +152,7 @@ export type PublicQueryResource =
   | 'state'
   | 'protagonist'
   | 'items'
+  | 'skills'
   | 'plans'
   | 'scenes'
   | 'npcs'
@@ -176,6 +177,7 @@ export type PublicQueryResult =
   | MemState
   | MemProtagonist
   | MemItem[]
+  | MemSkill[]
   | MemPlan[]
   | MemScene[]
   | MemNpc[]

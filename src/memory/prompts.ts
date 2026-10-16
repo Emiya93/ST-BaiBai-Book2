@@ -101,6 +101,8 @@ export const SUMMARY_MACROS: PromptMacro[] = [
   { token: '{{skills_state_block}}', desc: '带标题的技能清单(受技能开关控制)' },
   { token: '{{skills_field}}', desc: '技能增量 JSON 示例(受技能开关控制)' },
   { token: '{{skills_rule}}', desc: '主角与主要角色技能维护规则(受技能开关控制)' },
+  { token: '{{state_changes_json}}', desc: 'stateChanges 可用字段的 JSON 列表内容(随技能开关变化)' },
+  { token: '{{state_changes_names}}', desc: 'stateChanges 可用字段名称(随技能开关变化)' },
   { token: '{{itemlog_block}}', desc: '近期物品变动(已结算的账)' },
   { token: '{{scenes_block}}', desc: '已知地点清单(避免重复记录)' },
   { token: '{{npcs_block}}', desc: '已登场的 NPC 名册(避免重复记录)' },
@@ -983,6 +985,8 @@ export function isBuiltinSummaryPrompt(): boolean {
 /** 内置规则与材料分别展开;自定义模板不猜测边界,只将兼容规范移到 system。 */
 export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string } {
   const custom = apiSettings.prompts.summary.trim();
+  const stateChangeFields = ['location', 'locationPath', 'protagonist', 'sceneFocus', 'items',
+    ...(apiSettings.skillsEnabled ? ['skills'] : []), 'scenes', 'npcs', 'plans', 'lifeDetails', 'vars'];
   const macros = {
     user: a.user || '主角',
     char: a.char || '角色',
@@ -994,6 +998,8 @@ export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string
     skills_state_block: apiSettings.skillsEnabled ? `- 主角已掌握技能(本轮之前，只读参考):\n${fmtSkills(a.skills ?? [])}\n` : '',
     skills_field: apiSettings.skillsEnabled ? `,\n  ${SKILLS_FIELD}` : '',
     skills_rule: apiSettings.skillsEnabled ? SKILLS_RULE : '',
+    state_changes_json: stateChangeFields.map(field => JSON.stringify(field)).join(', '),
+    state_changes_names: stateChangeFields.join('、'),
     items_block: fmtItems(a.items),
     itemlog_block: fmtItemLog(a.itemLog),
     scenes_block: fmtScenes(a.scenes),
@@ -1206,7 +1212,7 @@ export function buildSummaryThinking(user: string): string {
 /** 查询重写可用的宏(供设置页展示) */
 export const QUERY_REWRITE_MACROS: PromptMacro[] = [
   { token: '{{history_block}}', desc: '历史剧情摘要(已注入为前置上下文)' },
-  { token: '{{state_snapshot}}', desc: '状态快照(滚出窗口的物品/计划)' },
+  { token: '{{state_snapshot}}', desc: '状态快照(主角/物品/角色/计划，开启技能系统时含技能)' },
 ];
 
 /**

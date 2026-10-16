@@ -191,7 +191,7 @@ function normalizeResource(value: unknown): PublicQueryRequest['resource'] {
   if (normalized === 'itemlog' || normalized === 'item-log') return 'itemLog';
   if (normalized === 'injectedhistory' || normalized === 'injected-history') return 'injectedHistory';
   const resources: PublicQueryRequest['resource'][] = [
-    'var', 'vars', 'state', 'protagonist', 'items', 'plans', 'scenes', 'npcs',
+    'var', 'vars', 'state', 'protagonist', 'items', 'skills', 'plans', 'scenes', 'npcs',
     'snapshot', 'history', 'injectedHistory', 'floor', 'context',
   ];
   const matched = resources.find(resource => resource.toLowerCase() === normalized);
@@ -245,7 +245,7 @@ async function registerSlashCommand(): Promise<boolean> {
           name: 'resource',
           description: '要读取的资源',
           typeList: [ARGUMENT_TYPE.STRING],
-          enumList: ['var', 'vars', 'state', 'protagonist', 'items', 'plans', 'scenes', 'npcs', 'itemLog', 'snapshot', 'history', 'injectedHistory', 'floor', 'context'],
+          enumList: ['var', 'vars', 'state', 'protagonist', 'items', 'skills', 'plans', 'scenes', 'npcs', 'itemLog', 'snapshot', 'history', 'injectedHistory', 'floor', 'context'],
         }),
         named({
           name: 'path',
@@ -281,7 +281,7 @@ async function registerSlashCommand(): Promise<boolean> {
         SlashCommandArgument.fromProps({
           description: '可选资源名，默认 snapshot',
           typeList: [ARGUMENT_TYPE.STRING],
-          enumList: ['var', 'vars', 'state', 'protagonist', 'items', 'plans', 'scenes', 'npcs', 'itemLog', 'snapshot', 'history', 'injectedHistory', 'floor', 'context'],
+          enumList: ['var', 'vars', 'state', 'protagonist', 'items', 'skills', 'plans', 'scenes', 'npcs', 'itemLog', 'snapshot', 'history', 'injectedHistory', 'floor', 'context'],
         }),
       ],
       helpString: `

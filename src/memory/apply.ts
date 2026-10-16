@@ -1359,6 +1359,7 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
       skill = { id, name: entry.name, createdAt: t, updatedAt: t };
       mem.skills.push(skill);
     }
+    skill.name = entry.name;
     if (entry.desc !== undefined) skill.desc = entry.desc || undefined;
     skill.updatedAt = t;
   }

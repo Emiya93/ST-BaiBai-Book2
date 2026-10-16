@@ -76,6 +76,14 @@ describe('技能提示词开关', () => {
     skills: [{ name: '星火术', desc: '消耗三点法力，照亮道路' }],
     npcs: [{ name: '旅伴', important: true, skills: '霜盾：抵挡一次攻击' }],
   };
+  it.each([false, true])('stateChanges 的示例和允许字段清单同步技能开关：%s', enabled => {
+    apiSettings.skillsEnabled = enabled;
+    const text = combined(buildSummaryPrompt(skillArgs));
+    const example = text.match(/"stateChanges":\s*\[([^\]]*)\]/)?.[1];
+    expect(example?.includes('"skills"')).toBe(enabled);
+    const rule = text.match(/^- stateChanges 必填[^\n]+/m)?.[0];
+    expect(rule?.includes('skills')).toBe(enabled);
+  });
   it.each(['', 'CUSTOM {{content}}', '{{skills_block}}\n{{skills_state_block}}\n{{skills_field}}\n{{skills_rule}}\n{{npcs_block}}'])('内置和自定义摘要仅在开启时添加技能：%s', template => {
     apiSettings.prompts.summary = template;
     const disabled = combined(buildSummaryPrompt(skillArgs)) + buildSummaryThinking(args.user);
