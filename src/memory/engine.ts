@@ -1087,6 +1087,29 @@ function applyLeafForFloor(
   const openPlansOrdered = stateBefore.plans.filter(p => p.status === 'open');
   // 生活小档案当前列表:顺序即提示词里的 d1/d2…,用于把 update/archive/remove 短序号翻译成稳定 id
   const storedDelta = finalizeDelta(delta, openPlansOrdered, stateBefore.lifeDetails, evidenceGuard);
+  if (!apiSettings.skillsEnabled && replaceLeaf) {
+    // 关闭只暂停技能维护；重做摘要仍保留旧增量，包括删除和显式清空，避免技能丢失或复活。
+    if (replaceLeaf.delta.skills) storedDelta.skills = JSON.parse(JSON.stringify(replaceLeaf.delta.skills));
+    const keyOf = (name: string) => name.trim().toLowerCase();
+    const oldNpcSkills = new Map<string, { name: string; skills: string; important?: boolean }>();
+    for (const npc of [...(replaceLeaf.delta.npcs?.add ?? []), ...(replaceLeaf.delta.npcs?.update ?? [])]) {
+      if (typeof npc?.name !== 'string' || typeof npc.skills !== 'string') continue;
+      oldNpcSkills.set(keyOf(npc.name), {
+        name: npc.name,
+        skills: npc.skills,
+        important: npc.important ?? oldNpcSkills.get(keyOf(npc.name))?.important,
+      });
+    }
+    for (const name of replaceLeaf.delta.npcs?.remove ?? []) oldNpcSkills.delete(keyOf(name));
+    for (const [key, old] of oldNpcSkills) {
+      // 本轮明确删除角色时仍遵守角色操作；其余字段只采用新摘要，不回灌旧着装、状态等。
+      if (storedDelta.npcs?.remove?.some(name => keyOf(name) === key)) continue;
+      const npcs = (storedDelta.npcs ??= {});
+      const entry = [...(npcs.add ?? []), ...(npcs.update ?? [])].findLast(npc => keyOf(npc.name) === key);
+      if (entry) entry.skills = old.skills;
+      else (npcs.update ??= []).push(old);
+    }
+  }
 
   // 时间起止:标签优先(与新剧情同源不漂移);标签缺的那端用 AI 补的 timeStart/timeEnd 兜底。
   const timeStart = tag.start || llmOptionalScalar(delta.timeStart) || undefined;
@@ -1942,6 +1965,18 @@ export function bindEngine(): void {
   // 状态或技能开关变化后立即刷新提示槽，防止技能关闭后仍残留在下一轮上下文。
   watch(
     () => [apiSettings.summaryOnlyMode, apiSettings.skillsEnabled],
+    () => {
+      invalidateRecallCache();
+      refreshInjection();
+    },
+  );
+
+  // 手动编辑也要更新已写入 ST 的提示槽；只比较技能内容，避免普通重放让翻页召回缓存失效。
+  watch(
+    () => JSON.stringify([
+      memory.skills.map(skill => [skill.name, skill.desc]),
+      memory.npcs.filter(npc => npc.skills).map(npc => [npc.name, npc.important, npc.skills]),
+    ]),
     () => {
       invalidateRecallCache();
       refreshInjection();

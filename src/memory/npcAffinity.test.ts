@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { effectScope, nextTick } from 'vue';
 import * as client from '@/api/client';
 import * as settings from '@/api/settings';
 import * as context from '@/st/context';
@@ -8,7 +9,8 @@ import { appendOpToLatestLeaf, classifyNpcPresence, deriveMemory, editLeafFull, 
 import { rewriteQuery } from './vector/rewrite';
 import * as embeddings from './vector/embed';
 import { createNewChatWithCarryover } from './carryover';
-import { currentSummaryPromise, summarizeFloor } from './engine';
+import { bindEngine, currentSummaryPromise, regenerateFloor, summarizeFloor } from './engine';
+import * as recallCache from './vector/cache';
 import * as inject from './inject';
 import { affinityLevelFromInput, applyNpcAffinity, cleanNpcAffinityLevel, fmtNpcAffinity, fmtNpcSummaryList, NPC_AFFINITY_BRIEFING } from './npcRelations';
 import { buildSummaryPrompt, RULE_NPC_AFFINITY } from './prompts';
@@ -203,6 +205,63 @@ describe('技能台账与角色技能', () => {
     expect(editNpc('艾琳娜', { skills: '' })).toBe(true);
     expect(memory.npcs[0].skills).toBeUndefined();
   });
+  it('末楼为番外时，技能和其他手动状态写入最近的主线摘要', () => {
+    const main = message(known());
+    const omitted = message({}); omitted.extra!.bbs2_omit = true;
+    useChat([main, omitted]);
+    const before = structuredClone(omitted);
+    expect(appendOpToLatestLeaf({
+      skills: { update: [{ name: '星火术', desc: '主线技能更新' }] },
+      npcs: { update: [{ name, outfit: '斗篷' }] },
+      varOps: [{ op: 'set', path: '金币', value: 20 }],
+    })).toBe(true);
+    expect(memory.skills[0].desc).toBe('主线技能更新');
+    expect(memory.npcs[0].outfit).toBe('斗篷');
+    expect(memory.vars.金币).toBe(20);
+    expect(omitted).toEqual(before);
+    useChat([omitted]);
+    expect(appendOpToLatestLeaf({ skills: { add: [{ name: '不该写入' }] } })).toBe(false);
+  });
+  it.each(['习得', '更新', '失去', '清空'] as const)('关闭技能重做摘要时保留原有技能操作：%s', async action => {
+    const delta: StoredDelta = action === '习得' ? known() : {
+      skills: action === '失去' ? { remove: ['星火术'] } : { update: [{ name: '星火术', desc: action === '清空' ? '' : '旧技能升级' }] },
+      npcs: { update: [{ name, skills: action === '清空' ? '' : '旧技能说明' }] },
+    };
+    const chat = action === '习得' ? [message(delta)] : [message(known()), message(delta)];
+    useChat(chat);
+    const before = { skills: JSON.parse(JSON.stringify(memory.skills)), npcSkills: memory.npcs[0].skills };
+    vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
+      summary: '重新整理剧情。', timeStart: '2026/9/13 10:00', timeEnd: '2026/9/13 10:05',
+      items: action === '习得' ? { add: [{ name: '法杖', qty: 3 }] } : { update: [{ name: '法杖', qty: 3 }] },
+      npcs: { update: [{ name, important: true, outfit: '新斗篷', skills: '模型不应写入的技能' }] },
+      skills: { add: [{ name: '模型不应写入' }] },
+      vars: [{ op: 'set', path: '金币', value: 8 }],
+    }));
+    expect(await regenerateFloor(chat.length - 1)).toBe(true);
+    expect(memory.skills).toEqual(before.skills);
+    expect(memory.npcs[0].skills).toBe(before.npcSkills);
+    expect(memory.npcs[0].outfit).toBe('新斗篷');
+    expect(memory.items[0].qty).toBe(3);
+    expect(memory.vars.金币).toBe(8);
+    settings.apiSettings.skillsEnabled = true;
+    expect(inject.buildStateInjectionText().includes('模型不应写入')).toBe(false);
+  });
+  it.each(['省略角色', '删除角色', '开启技能'] as const)('重做摘要时技能保留不覆盖其他角色操作：%s', async scenario => {
+    settings.apiSettings.skillsEnabled = scenario === '开启技能';
+    useChat([message(known())]);
+    vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
+      summary: '重新整理剧情。', timeStart: '2026/9/13 10:00', timeEnd: '2026/9/13 10:05',
+      npcs: scenario === '删除角色' ? { remove: [name] } : scenario === '开启技能' ? { add: [{ name, important: false, skills: '新技能' }] } : undefined,
+      skills: { add: [{ name: '闪烁' }] },
+    }));
+    expect(await regenerateFloor(0)).toBe(true);
+    if (scenario === '删除角色') expect(memory.npcs).toEqual([]);
+    else expect(memory.npcs[0].skills).toBe(scenario === '开启技能' ? '新技能' : '霜盾：抵挡一次攻击');
+    if (scenario === '开启技能') {
+      expect(memory.skills.map(skill => skill.name)).toEqual(['闪烁']);
+      expect(memory.npcs[0].important).toBeFalsy();
+    } else expect(memory.skills[0].name).toBe('星火术');
+  });
   it('主模型状态与前往地点草稿受技能开关控制，仅摘要模式不注入技能状态', () => {
     useChat([message(known())]);
     const target = { id: 'scene:客栈', name: '客栈', path: ['客栈'], parentId: '', desc: '休息处', createdAt: 1, updatedAt: 1 };
@@ -218,6 +277,37 @@ describe('技能台账与角色技能', () => {
     settings.apiSettings.summaryOnlyMode = true;
     expect(inject.buildStateInjectionText()).toBe('');
     expect(memory.skills[0].name).toBe('星火术');
+  });
+  it('手动编辑技能立即刷新实际提示槽，普通重放不反复清空召回缓存', async () => {
+    settings.apiSettings.skillsEnabled = true;
+    const ctx = useChat([message(known())]);
+    ctx.eventSource = { on: vi.fn() };
+    ctx.eventTypes = { USER_MESSAGE_RENDERED: 'user', GENERATION_STARTED: 'generation' } as STContext['eventTypes'];
+    ctx.setExtensionPrompt = vi.fn();
+    const invalidate = vi.spyOn(recallCache, 'invalidateRecallCache');
+    const scope = effectScope();
+    scope.run(() => bindEngine());
+    const stateText = () => vi.mocked(ctx.setExtensionPrompt!).mock.calls.filter(call => call[0] === 'baibai_book2_memory_state').at(-1)?.[1];
+    try {
+      appendOpToLatestLeaf({ skills: { update: [{ name: '星火术', desc: '手动调整后的技能效果' }] } });
+      await nextTick();
+      expect(stateText()).toContain('手动调整后的技能效果');
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      editNpc(name, { skills: '手动调整后的角色技能' });
+      await nextTick();
+      expect(stateText()).toContain('手动调整后的角色技能');
+      expect(invalidate).toHaveBeenCalledTimes(2);
+      recomputeDerived();
+      await nextTick();
+      expect(invalidate).toHaveBeenCalledTimes(2);
+      settings.apiSettings.skillsEnabled = false;
+      await nextTick();
+      expect(stateText()).not.toMatch(/星火术|手动调整后的/);
+      settings.apiSettings.skillsEnabled = true;
+      await nextTick();
+      expect(stateText()).toContain('手动调整后的技能效果');
+      expect(stateText()).toContain('手动调整后的角色技能');
+    } finally { scope.stop(); }
   });
   it.each([false, true])('真实摘要请求与响应遵守技能开关：%s', async enabled => {
     settings.apiSettings.skillsEnabled = enabled;

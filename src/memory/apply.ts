@@ -1884,10 +1884,11 @@ export function addSummary(
 
 /* ============ 叶子(在消息 extra 上) ============ */
 
-/** 最新一条有效叶子(chat 里最后一条 leafValid 的消息);无则 null */
+/** 最新一条参与主线重放的有效叶子；番外不接收手动状态，否则写入后不会生效。 */
 export function latestLeaf(): { index: number; leaf: LeafExtra } | null {
   const chat = getContext()?.chat ?? [];
   for (let i = chat.length - 1; i >= 0; i--) {
+    if (chat[i]?.extra?.bbs2_omit) continue;
     if (leafValid(chat[i])) return { index: i, leaf: getLeaf(chat[i])! };
   }
   return null;
