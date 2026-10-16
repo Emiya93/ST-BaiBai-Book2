@@ -278,6 +278,26 @@ describe('技能台账与角色技能', () => {
     expect(inject.buildStateInjectionText()).toBe('');
     expect(memory.skills[0].name).toBe('星火术');
   });
+  it('技能注入可独立关闭，其他状态、技能记录及摘要参考保持可用', () => {
+    settings.apiSettings.skillsEnabled = true;
+    useChat([message(known())]);
+    settings.apiSettings.injection.skills = false;
+    const text = inject.buildStateInjectionText();
+    expect(text).not.toMatch(/星火术|霜盾|主角技能/);
+    expect(text).toContain(name);
+    expect(text).toContain('法杖');
+    expect(memory.skills[0].name).toBe('星火术');
+    expect(memory.npcs[0].skills).toContain('霜盾');
+    const prompt = buildSummaryPrompt({ ...promptArgs, skills: memory.skills, npcs: memory.npcs });
+    expect(prompt.user).toContain('星火术');
+    expect(prompt.user).toContain('霜盾');
+    settings.apiSettings.injection.skills = true;
+    expect(inject.buildStateInjectionText()).toContain('星火术');
+    expect(inject.buildStateInjectionText()).toContain('霜盾');
+    settings.apiSettings.injection.scenes = false;
+    expect(inject.buildStateInjectionText()).toContain('星火术');
+    expect(inject.buildStateInjectionText()).not.toContain('霜盾');
+  });
   it('手动编辑技能立即刷新实际提示槽，普通重放不反复清空召回缓存', async () => {
     settings.apiSettings.skillsEnabled = true;
     const ctx = useChat([message(known())]);
@@ -307,10 +327,18 @@ describe('技能台账与角色技能', () => {
       await nextTick();
       expect(stateText()).toContain('手动调整后的技能效果');
       expect(stateText()).toContain('手动调整后的角色技能');
+      settings.apiSettings.injection.skills = false;
+      await nextTick();
+      expect(stateText()).not.toMatch(/星火术|手动调整后的/);
+      settings.apiSettings.injection.skills = true;
+      await nextTick();
+      expect(stateText()).toContain('手动调整后的技能效果');
+      expect(stateText()).toContain('手动调整后的角色技能');
     } finally { scope.stop(); }
   });
   it.each([false, true])('真实摘要请求与响应遵守技能开关：%s', async enabled => {
     settings.apiSettings.skillsEnabled = enabled;
+    settings.apiSettings.injection.skills = false;
     const next = message(); delete next.extra!.bbs2_leaf;
     const chat = [message(known()), next];
     useChat(chat);
@@ -328,6 +356,7 @@ describe('技能台账与角色技能', () => {
   });
   it.each([false, true])('向量查询重写的技能快照和规则遵守开关：%s', async enabled => {
     settings.apiSettings.skillsEnabled = enabled;
+    settings.apiSettings.injection.skills = false;
     settings.apiSettings.keepRecent = 1;
     const user: STMessage = { name: 'User', is_user: true, is_system: false, mes: '继续赶路。' };
     useChat([message(known()), user]);

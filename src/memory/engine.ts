@@ -1971,6 +1971,9 @@ export function bindEngine(): void {
     },
   );
 
+  // 技能注入开关只刷新主模型提示槽，摘要和查询重写不变，无需重新召回。
+  watch(() => apiSettings.injection.skills, () => refreshInjection());
+
   // 手动编辑也要更新已写入 ST 的提示槽；只比较技能内容，避免普通重放让翻页召回缓存失效。
   watch(
     () => JSON.stringify([

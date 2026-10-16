@@ -36,7 +36,7 @@ describe('改版设置首次继承', () => {
       extensionSettings.baibai_book = structuredClone(source);
       extensionSettings.baibai_api_channels = { revision: 4, channels: [channel] };
     }
-    if (scenario === 'existing') extensionSettings.baibai_book2 = { skillsEnabled: false, keepRecent: 2, wiPatternsSeeded: true };
+    if (scenario === 'existing') extensionSettings.baibai_book2 = { skillsEnabled: false, injection: { skills: false }, keepRecent: 2, wiPatternsSeeded: true };
     if (scenario === 'legacy-local') local.set('bbs.api.v1', JSON.stringify(source));
     const originalSnapshot = JSON.stringify(extensionSettings.baibai_book);
     const originalChannels = JSON.stringify(extensionSettings.baibai_api_channels);
@@ -52,6 +52,7 @@ describe('改版设置首次继承', () => {
     const isolated = await import('./settings');
     isolated.hydrateSettings();
     expect(isolated.apiSettings.skillsEnabled).toBe(scenario !== 'existing');
+    expect(isolated.apiSettings.injection.skills).toBe(scenario !== 'existing');
     if (scenario === 'original' || scenario === 'legacy-local') {
       expect(isolated.apiSettings.keepRecent).toBe(7);
       expect(isolated.apiSettings.channels[0]).toMatchObject(channel);

@@ -998,7 +998,7 @@ function exportPublicApiDocument() {
           <span class="bbs-field-label">启用技能记录</span>
           <input v-model="apiSettings.skillsEnabled" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">默认开启。显示技能页签和主要角色技能栏，摘要会记录主角与主要角色明确掌握的技能，并在提示词中提供技能及其限制。关闭后隐藏入口、停止技能提取与注入，已有技能保留；重新开启即可继续使用。「仅注入剧情摘要」仍会阻止技能状态向主模型注入。</p>
+        <p class="bbs-field-hint">默认开启。显示技能页签和主要角色技能栏，摘要会记录主角与主要角色明确掌握的技能。关闭后隐藏入口、停止技能提取与注入，已有技能保留；重新开启即可继续使用。只想停止向主模型发送技能，可关闭下方「注入设置 → 技能信息」。</p>
       </Collapsible>
 
       <Collapsible title="注入设置" :open="false">
@@ -1008,7 +1008,7 @@ function exportPublicApiDocument() {
           <span class="bbs-field-label">仅注入剧情摘要</span>
           <input v-model="apiSettings.summaryOnlyMode" type="checkbox" class="bbs-checkbox" />
         </label>
-        <p class="bbs-field-hint">兼容角色卡自带的变量系统。开启后仍会分析、保存并在柏宝书内展示物品、角色、场景、计划和变量,但不再把当前状态注入主模型(下方各块开关也随之不生效),也不再向后续楼层正文写入物品/变量变动旁注。已有楼层中的旁注不会主动清理;场景页的「前往」功能不受影响。</p>
+        <p class="bbs-field-hint">兼容角色卡自带的变量系统。开启后仍会分析、保存并在柏宝书内展示物品、技能、角色、场景、计划和变量,但不再把当前状态注入主模型(下方各块开关也随之不生效),也不再向后续楼层正文写入物品/变量变动旁注。已有楼层中的旁注不会主动清理;场景页的「前往」功能不受影响。</p>
 
         <hr class="bbs-rule" />
 
@@ -1029,6 +1029,12 @@ function exportPublicApiDocument() {
           <input v-model="apiSettings.injection.protagonist" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode" />
         </label>
         <p class="bbs-field-hint">主角当前状态:性别、年龄、身份、外貌、着装、状态。自包含,不依赖场景信息。</p>
+
+        <label class="bbs-switch-row">
+          <span class="bbs-field-label">技能信息</span>
+          <input v-model="apiSettings.injection.skills" type="checkbox" class="bbs-checkbox" :disabled="apiSettings.summaryOnlyMode || !apiSettings.skillsEnabled" />
+        </label>
+        <p class="bbs-field-hint">主角技能及 NPC 名册内的主要角色技能，默认开启。关闭仅停止向主模型发送，摘要照常记录，技能页与角色页仍可查看；角色技能随 NPC 名册发送。需先开启「技能系统 → 启用技能记录」；「仅注入剧情摘要」开启时也不注入技能状态。</p>
 
         <label class="bbs-switch-row">
           <span class="bbs-field-label">场景信息</span>

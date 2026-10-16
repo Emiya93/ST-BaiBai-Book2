@@ -402,7 +402,7 @@ function relationHead(relation: string | undefined): string {
  * **性别在所有档都发**(包括不在场),防 AI 搞错性别;关系的**称谓头**同理(把亲哥写成陌生人同级严重)。
  * 年龄按锚点+当前故事时间(now)推算后注入,时间跳跃自动长岁。无 NPC 返回空串。
  */
-function fmtNpcContext(npcs: MemNpc[], scenes: MemScene[], here: string, locationPath: string[] | undefined, now: string): string {
+function fmtNpcContext(npcs: MemNpc[], scenes: MemScene[], here: string, locationPath: string[] | undefined, now: string, includeSkills = apiSettings.skillsEnabled): string {
   if (!npcs.length) return '';
   const main: MemNpc[] = [];
   const present: MemNpc[] = [];
@@ -434,7 +434,7 @@ function fmtNpcContext(npcs: MemNpc[], scenes: MemScene[], here: string, locatio
         const head = inBracket.length ? `${n.name}(${inBracket.join('·')})` : n.name;
         const rel = oneLine(n.relation) ? ` —— 与主角:${oneLine(n.relation)}` : '';
         const affinity = aff(n);
-        const skills = apiSettings.skillsEnabled && oneLine(n.skills) ? ` 〔技能:${oneLine(n.skills)}〕` : '';
+        const skills = includeSkills && oneLine(n.skills) ? ` 〔技能:${oneLine(n.skills)}〕` : '';
         return `  - ${head}${rel}${affinity ? ` 〔好感估计:${affinity}〕` : ''}${npcStateTail(n, true)}${skills}`;
       })
       .join('\n');
@@ -559,6 +559,7 @@ export function buildStateInjectionText(): string {
   const scenesOn = inj.scenes;
   const npcsOn = inj.npcs && scenesOn;
   const itemsOn = inj.items && scenesOn;
+  const skillsOn = apiSettings.skillsEnabled && inj.skills;
 
   const st: string[] = [];
   if (memory.state.time) {
@@ -607,13 +608,13 @@ export function buildStateInjectionText(): string {
   // 物品分两组省 token:可达(随身 / 存放地落在当前地点或其祖先链)发全量(名+量+描述);
   // 他处寄存的只发名+数量(砍掉描述这个大头),既省 token 又不至于让主模型以为东西没了。
   if (itemsOn) st.push(...fmtItemContext(memory.items, memory.scenes, here, locPath));
-  if (apiSettings.skillsEnabled && memory.skills.length) st.push(`主角技能(已掌握，按记录的效果与限制使用):\n${fmtSkills(memory.skills)}`);
+  if (skillsOn && memory.skills.length) st.push(`主角技能(已掌握，按记录的效果与限制使用):\n${fmtSkills(memory.skills)}`);
   // 注:近期物品变动不在此注入。改为摘要后写进对应楼层正文 </bbs_end> 之后(见 engine.ts),
   // 窗口内全文楼层天然可见、滚出窗口自然消失 —— 符合「物品变动只在那段时间有用」的取舍。
 
   // NPC 名册四档:在场发全量;同区域发名+身份+性格+所在地;不在场只发名+身份。NPC 越多省得越多。
   if (npcsOn) {
-    const npcBlock = fmtNpcContext(memory.npcs, memory.scenes, here, locPath, memory.state.time);
+    const npcBlock = fmtNpcContext(memory.npcs, memory.scenes, here, locPath, memory.state.time, skillsOn);
     if (npcBlock) st.push(`NPC名册:\n${npcBlock}`);
   }
 
@@ -645,7 +646,7 @@ export function buildStateInjectionText(): string {
   // 但只要存在摘要或时间/地点就值得带上整块)
   const hasProtagonist = inj.protagonist && Object.values(memory.protagonist).some(value => !!oneLine(value));
   const hasState = memory.state.time || memory.state.location || (inj.sceneFocus && memory.state.sceneFocus) || hasProtagonist || (itemsOn && memory.items.length) || (scenesOn && memory.scenes.length) || (npcsOn && memory.npcs.length) || openPlans.length || hasVarState || (inj.lifeDetails && memory.lifeDetails.length);
-  if (!hasState && !(apiSettings.skillsEnabled && memory.skills.length)) return '';
+  if (!hasState && !(skillsOn && memory.skills.length)) return '';
   // 首尾私密简报框定,避免主模型把状态快照当成要复述/输出的模板(正文后跟吐一份状态)
   return `${MEMORY_BRIEFING_NOTE}\n[当前状态]\n${st.join('\n')}\n${MEMORY_BRIEFING_END}`;
 }

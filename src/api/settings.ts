@@ -167,6 +167,8 @@ export interface InjectionSections {
   lifeDetails: boolean;
   /** 主角当前状态(性别/年龄/外貌/着装/状态) */
   protagonist: boolean;
+  /** 主角技能及名册中的主要角色技能；只控制主模型注入，仍受技能系统总开关约束。 */
+  skills: boolean;
   /** NPC 名册(依赖场景信息) */
   npcs: boolean;
   /** NPC 名册内的五档好感估计(内心好感/外在态度/说明);关闭后名册照发,只是不附带好感。
@@ -346,7 +348,7 @@ function defaults(): ApiSettings {
     autoSummaryEnabled: true,
     summaryOnlyMode: false,
     skillsEnabled: true,
-    injection: { sceneFocus: true, lifeDetails: true, protagonist: true, npcs: true, npcAffinity: true, items: true, scenes: true },
+    injection: { sceneFocus: true, lifeDetails: true, protagonist: true, skills: true, npcs: true, npcAffinity: true, items: true, scenes: true },
     keepRecent: 3,
     excludedChars: [],
     excludedWorldNames: [],
@@ -423,6 +425,7 @@ function normalize(raw: unknown): ApiSettings {
     sceneFocus: typeof ri.sceneFocus === 'boolean' ? ri.sceneFocus : true,
     lifeDetails: typeof ri.lifeDetails === 'boolean' ? ri.lifeDetails : true,
     protagonist: typeof ri.protagonist === 'boolean' ? ri.protagonist : true,
+    skills: typeof ri.skills === 'boolean' ? ri.skills : true,
     npcs: typeof ri.npcs === 'boolean' ? ri.npcs : true,
     npcAffinity: typeof ri.npcAffinity === 'boolean' ? ri.npcAffinity : true,
     items: typeof ri.items === 'boolean' ? ri.items : true,
