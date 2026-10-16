@@ -15,6 +15,7 @@
  *   任何来源(ST 事件、主界面摘要、楼内编辑)的变化都能刷新。
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { apiSettings } from '@/api/settings';
 import Icon from '@/components/Icon.vue';
 import BbsSelect from '@/components/BbsSelect.vue';
 import { NPC_AFFINITY_FIELDS, affinityLevelFromInput, fmtNpcAffinity } from '@/memory/npcRelations';
@@ -126,6 +127,7 @@ const NPC_FIELDS = [
   { key: 'affinityNote', draft: 'affinityNote', label: '好感说明' },
   { key: 'outfit', draft: 'outfit', label: '着装' },
   { key: 'condition', draft: 'condition', label: '状态' },
+  { key: 'skills', draft: 'skills', label: '技能' },
   { key: 'desc', draft: 'npcDesc', label: '外貌' },
   { key: 'personality', draft: 'personality', label: '性格' },
   { key: 'ties', draft: 'ties', label: '人际' },
@@ -144,6 +146,7 @@ function fmtNpc(x: NpcDelta): { text: string; sub?: string } {
   if (affinity) parts.push(`好感估计:${affinity}`);
   if (x.outfit) parts.push(`着装:${x.outfit}`);
   if (x.condition) parts.push(`状态:${x.condition}`);
+  if (apiSettings.skillsEnabled && x.skills !== undefined) parts.push(`技能:${x.skills || '清空'}`);
   if (x.desc) parts.push(`外貌:${x.desc}`);
   if (x.personality) parts.push(`性格:${x.personality}`);
   if (x.ties) parts.push(`人际:${x.ties}`);
@@ -152,6 +155,17 @@ function fmtNpc(x: NpcDelta): { text: string; sub?: string } {
   if (x.important === true) parts.push('主要角色');
   return { text, sub: parts.length ? parts.join(' · ') : undefined };
 }
+
+const skillTags = computed<Tag[]>(() => {
+  if (!apiSettings.skillsEnabled) return [];
+  const skills = d.value?.skills;
+  const out: Tag[] = [];
+  for (const bucket of ['add', 'update'] as const) {
+    (skills?.[bucket] ?? []).forEach((s, idx) => out.push({ key: `skill:${bucket}:${idx}`, op: bucket, bucket, idx, text: s.name, sub: s.desc, editable: true }));
+  }
+  (skills?.remove ?? []).forEach((name, idx) => out.push({ key: `skill:remove:${idx}`, op: 'remove', bucket: 'remove', idx, text: name, editable: true }));
+  return out;
+});
 
 const itemTags = computed<Tag[]>(() => {
   const it = d.value?.items;
@@ -263,7 +277,7 @@ function parseVarValue(text: string): JsonValue {
 }
 
 const hasAnyDelta = computed(
-  () => protagonistTags.value.length || itemTags.value.length || npcTags.value.length || sceneTags.value.length || planTags.value.length || varTags.value.length || !!d.value?.location,
+  () => protagonistTags.value.length || itemTags.value.length || skillTags.value.length || npcTags.value.length || sceneTags.value.length || planTags.value.length || varTags.value.length || !!d.value?.location,
 );
 
 /* ============ 就地编辑 ============ */
@@ -277,6 +291,7 @@ const edit = reactive<{
   name: string; qty: string; desc: string; content: string;
   title: string; npcAge: string; relation: string; ties: string; outfit: string; condition: string; npcDesc: string; personality: string; npcLoc: string;
   affinityInner: string; affinityOuter: string; affinityNote: string;
+  skills: string;
   varPath: string; varKey: string; varValue: string; varDelta: string;
 }>({
   text: '',
@@ -293,6 +308,7 @@ const edit = reactive<{
   affinityInner: '',
   affinityOuter: '',
   affinityNote: '',
+  skills: '',
   ties: '',
   outfit: '',
   condition: '',
@@ -419,7 +435,7 @@ const editingNpcDelta = computed(() => {
 });
 const npcEditFields = computed(() => {
   const npc = editingNpcDelta.value;
-  return npc ? NPC_FIELDS.filter(f => editKey.value?.startsWith('npc:add:') || npc[f.key] !== undefined) : [];
+  return npc ? NPC_FIELDS.filter(f => (f.key !== 'skills' || apiSettings.skillsEnabled) && (editKey.value?.startsWith('npc:add:') || npc[f.key] !== undefined)) : [];
 });
 const npcAffinityEditFields = computed(() => {
   const npc = editingNpcDelta.value;
@@ -442,6 +458,7 @@ function editTag(tag: Tag) {
   edit.affinityInner = '';
   edit.affinityOuter = '';
   edit.affinityNote = '';
+  edit.skills = '';
   edit.ties = '';
   edit.outfit = '';
   edit.condition = '';
@@ -461,6 +478,13 @@ function editTag(tag: Tag) {
       edit.qty = typeof x?.qty === 'number' ? String(x.qty) : '';
       edit.desc = x?.desc ?? '';
     }
+  } else if (tag.key.startsWith('skill:')) {
+    if (tag.bucket === 'remove') edit.name = dd.skills?.remove?.[tag.idx] ?? '';
+    else {
+      const skill = (tag.bucket === 'add' ? dd.skills?.add : dd.skills?.update)?.[tag.idx];
+      edit.name = skill?.name ?? '';
+      edit.desc = skill?.desc ?? '';
+    }
   } else if (tag.key.startsWith('npc:')) {
     if (tag.bucket === 'remove') {
       edit.name = dd.npcs?.remove?.[tag.idx] ?? '';
@@ -476,6 +500,7 @@ function editTag(tag: Tag) {
       edit.ties = x?.ties ?? '';
       edit.outfit = x?.outfit ?? '';
       edit.condition = x?.condition ?? '';
+      edit.skills = x?.skills ?? '';
       edit.npcDesc = x?.desc ?? '';
       edit.personality = x?.personality ?? '';
       edit.npcLoc = x?.location ?? '';
@@ -513,6 +538,13 @@ function saveTag(tag: Tag) {
           else delete x.desc;
         }
       }
+    } else if (tag.key.startsWith('skill:')) {
+      if (tag.bucket === 'remove') {
+        if (dd.skills?.remove) dd.skills.remove[tag.idx] = edit.name.trim();
+      } else {
+        const skill = (tag.bucket === 'add' ? dd.skills?.add : dd.skills?.update)?.[tag.idx];
+        if (skill) { skill.name = edit.name.trim(); skill.desc = edit.desc.trim(); }
+      }
     } else if (tag.key.startsWith('npc:')) {
       if (tag.bucket === 'remove') {
         if (dd.npcs?.remove) dd.npcs.remove[tag.idx] = edit.name.trim();
@@ -526,9 +558,10 @@ function saveTag(tag: Tag) {
           const rec = x as unknown as Record<string, unknown>;
           const prevAge = x.age;
           for (const f of NPC_FIELDS) {
+            if (f.key === 'skills' && !apiSettings.skillsEnabled) continue;
             const t = (edit[f.draft] as string).trim();
             // 好感说明的空字符串是显式清空;省略才是保留上一层,不能混用。
-            if (t || (f.key === 'affinityNote' && x.affinityNote !== undefined)) rec[f.key] = t;
+            if (t || (f.key === 'affinityNote' && x.affinityNote !== undefined) || (f.key === 'skills' && x.skills !== undefined)) rec[f.key] = t;
             else delete rec[f.key];
           }
           for (const { key } of NPC_AFFINITY_FIELDS) {
@@ -579,7 +612,7 @@ function deleteTag(tag: Tag) {
       if (Array.isArray(dd.varOps)) dd.varOps.splice(tag.idx, 1); // varOps 是扁平数组,直接按序号删
       return;
     }
-    const group = (dd as Record<string, Record<string, unknown[]>>)[cat === 'item' ? 'items' : cat === 'npc' ? 'npcs' : cat === 'scene' ? 'scenes' : 'plans'];
+    const group = (dd as Record<string, Record<string, unknown[]>>)[cat === 'item' ? 'items' : cat === 'skill' ? 'skills' : cat === 'npc' ? 'npcs' : cat === 'scene' ? 'scenes' : 'plans'];
     const arr = group?.[bucket];
     if (Array.isArray(arr)) arr.splice(tag.idx, 1);
   });
@@ -657,6 +690,7 @@ async function confirmRegenerate() {
 const groups = computed(() => [
   { title: '主角', icon: 'characters', tags: protagonistTags.value },
   { title: '物品', icon: 'items', tags: itemTags.value },
+  { title: '技能', icon: 'skills', tags: skillTags.value },
   { title: '角色', icon: 'npcs', tags: npcTags.value },
   { title: '场景', icon: 'scenes', tags: sceneTags.value },
   { title: '悬念簿', icon: 'plans', tags: planTags.value },
@@ -775,12 +809,12 @@ const groups = computed(() => [
                       <!-- 就地编辑该标签:统一表单式(带字段标签 + 底部规整按钮)。可编辑类给字段行;
                            不可编辑类(scene、plan 的 达成/重启/删除)只读回显 + 删除/取消。 -->
                       <div v-if="editKey === tag.key" class="bbs-fp-editform">
-                        <template v-if="tag.editable && tag.key.startsWith('item:') && tag.bucket !== 'remove'">
+                        <template v-if="tag.editable && (tag.key.startsWith('item:') || tag.key.startsWith('skill:')) && tag.bucket !== 'remove'">
                           <label class="bbs-fp-nrow">
                             <span class="bbs-fp-nlabel">名称</span>
                             <textarea :ref="setFocus" v-model="edit.name" rows="1" class="bbs-input bbs-fp-nfield" placeholder="名称" @input="onTextInput" @keydown="onFieldKeydown"></textarea>
                           </label>
-                          <label class="bbs-fp-nrow">
+                          <label v-if="tag.key.startsWith('item:')" class="bbs-fp-nrow">
                             <span class="bbs-fp-nlabel">数量</span>
                             <input v-model="edit.qty" class="bbs-input bbs-fp-nfield bbs-fp-nfield-num" type="number" placeholder="留空=不计数" />
                           </label>

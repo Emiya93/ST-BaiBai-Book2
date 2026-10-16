@@ -67,6 +67,7 @@ export function recomputeDerived(): void {
     memory.protagonist[key] = d.protagonist[key];
   }
   memory.items.splice(0, memory.items.length, ...d.items);
+  memory.skills.splice(0, memory.skills.length, ...d.skills);
   memory.plans.splice(0, memory.plans.length, ...d.plans);
   memory.scenes.splice(0, memory.scenes.length, ...d.scenes);
   memory.npcs.splice(0, memory.npcs.length, ...d.npcs);
@@ -251,6 +252,12 @@ function mergeStoredDelta(a: StoredDelta, b: StoredDelta): void {
     if (b.items.add?.length) (ai.add ??= []).push(...b.items.add);
     if (b.items.update?.length) (ai.update ??= []).push(...b.items.update);
     if (b.items.remove?.length) (ai.remove ??= []).push(...b.items.remove);
+  }
+  if (b.skills) {
+    const skills = (a.skills ??= {});
+    if (b.skills.add?.length) (skills.add ??= []).push(...b.skills.add);
+    if (b.skills.update?.length) (skills.update ??= []).push(...b.skills.update);
+    if (b.skills.remove?.length) (skills.remove ??= []).push(...b.skills.remove);
   }
   if (b.scenes) {
     const as = (a.scenes ??= {});

@@ -2,9 +2,10 @@
 import Icon from '@/components/Icon.vue';
 import NavBar from '@/components/NavBar.vue';
 import FloatingOrb from '@/components/FloatingOrb.vue';
+import { apiSettings } from '@/api/settings';
 import { getPage } from '@/pages/registry';
 import { closeBook, cycleTheme, lastOpenedAt, modalHost, THEMES, ui } from '@/state/ui';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 // 题首主题按钮:显示「下一个」主题的图标与名,点击即切换到它
 const nextTheme = computed(() => {
@@ -27,6 +28,10 @@ const navPlacement = computed<'top' | 'bottom'>(() => {
 });
 
 const current = computed(() => getPage(ui.activePage));
+// 关闭技能或恢复本机上次页签时，确保实际页面与导航选中态一致。
+watch([() => apiSettings.skillsEnabled, () => ui.activePage], () => {
+  if (!apiSettings.skillsEnabled && ui.activePage === 'skills') ui.activePage = 'summary';
+}, { immediate: true });
 
 // —— 遮罩点击关闭:仅当按下与松开都在遮罩本身。
 // 避免:1) 移动端打开手势的合成 click 穿透秒关;2) 窗内按下拖到窗外误关。

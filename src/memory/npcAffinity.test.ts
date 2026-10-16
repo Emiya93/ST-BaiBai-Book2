@@ -4,7 +4,9 @@ import * as settings from '@/api/settings';
 import * as context from '@/st/context';
 import type { STContext, STMessage } from '@/st/context';
 import * as notices from '@/st/toast';
-import { classifyNpcPresence, deriveMemory, editLeafFull, editNpc, finalizeDelta, setNpcFollow, upsertNpc } from './apply';
+import { appendOpToLatestLeaf, classifyNpcPresence, deriveMemory, editLeafFull, editNpc, finalizeDelta, setNpcFollow, upsertNpc } from './apply';
+import { rewriteQuery } from './vector/rewrite';
+import * as embeddings from './vector/embed';
 import { createNewChatWithCarryover } from './carryover';
 import { currentSummaryPromise, summarizeFloor } from './engine';
 import * as inject from './inject';
@@ -16,6 +18,7 @@ import { createEmptyMemory, type NpcAffinity, type NpcDelta, type StoredDelta, t
 const name = '艾琳';
 const initial: NpcDelta = { name, affinityInner: 1, affinityOuter: -1, affinityNote: '在意,但以冷淡掩饰', personality: '嘴硬、护短' };
 const original = {
+  skillsEnabled: settings.apiSettings.skillsEnabled,
   summaryOnlyMode: settings.apiSettings.summaryOnlyMode,
   injection: { ...settings.apiSettings.injection },
   prompt: settings.apiSettings.prompts.summary,
@@ -41,6 +44,7 @@ function useChat(chat: STMessage[]) {
 }
 
 beforeEach(() => {
+  settings.apiSettings.skillsEnabled = false;
   vi.useFakeTimers();
   Object.assign(memory, createEmptyMemory());
   settings.apiSettings.summaryOnlyMode = false;
@@ -61,10 +65,119 @@ afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   settings.apiSettings.summaryOnlyMode = original.summaryOnlyMode;
+  settings.apiSettings.skillsEnabled = original.skillsEnabled;
   Object.assign(settings.apiSettings.injection, original.injection);
   settings.apiSettings.prompts.summary = original.prompt;
   settings.apiSettings.keepRecent = original.keepRecent;
   settings.apiSettings.vector.enabled = original.vector;
+});
+
+describe('技能台账与角色技能', () => {
+  const known = (): StoredDelta => ({
+    items: { add: [{ name: '法杖', qty: 1 }] },
+    skills: { add: [{ name: '星火术', desc: '照亮道路，消耗三点法力' }] },
+    npcs: { add: [{ name, important: true, skills: '霜盾：抵挡一次攻击' }] },
+  });
+  it('旧数据默认无技能；历史记录不受开关影响，更新、删除、番外及切换回复可回退', () => {
+    expect(deriveMemory(null).skills).toEqual([]);
+    const chat = [message(known()), message({ skills: { update: [{ name: '星火术', desc: '更明亮' }] } })];
+    expect(deriveMemory(chat, 1).skills[0].desc).toContain('消耗三点法力');
+    expect(deriveMemory(chat).skills[0].desc).toBe('更明亮');
+    chat[1].extra!.bbs_omit = true;
+    expect(deriveMemory(chat).skills[0].desc).toContain('消耗三点法力');
+    delete chat[1].extra!.bbs_omit;
+    chat[1].swipe_id = 1;
+    expect(deriveMemory(chat).skills[0].desc).toContain('消耗三点法力');
+    chat[1] = message({ skills: { remove: ['星火术'] }, npcs: { update: [{ name, skills: '' }] } });
+    expect(deriveMemory(chat).skills).toEqual([]);
+    expect(deriveMemory(chat).npcs[0].skills).toBeUndefined();
+    expect(deriveMemory(chat.slice(0, 1)).npcs[0].skills).toContain('霜盾');
+    expect(deriveMemory(chat).items[0].qty).toBe(1);
+  });
+  it('仅开启时接收模型的技能增量，关闭后其他状态照常更新', () => {
+    for (const enabled of [false, true]) {
+      settings.apiSettings.skillsEnabled = enabled;
+      const delta = finalizeDelta(known() as SummaryDelta, []);
+      expect(!!delta.skills).toBe(enabled);
+      expect(!!delta.npcs!.add![0].skills).toBe(enabled);
+      expect(deriveMemory([message(delta)]).items[0].name).toBe('法杖');
+    }
+  });
+  it('同叶子反复编辑、改名往返、删除后重加保持最后操作，不重复记录', () => {
+    useChat([message(known())]);
+    expect(appendOpToLatestLeaf({ skills: { update: [{ name: '星火术', desc: '新版' }] } })).toBe(true);
+    appendOpToLatestLeaf({ skills: { remove: ['星火术'], add: [{ name: '光亮术', desc: '改名' }] } });
+    appendOpToLatestLeaf({ skills: { remove: ['光亮术'], add: [{ name: '星火术', desc: '再次掌握' }] } });
+    appendOpToLatestLeaf({ skills: { update: [{ name: '星火术', desc: '' }] } });
+    expect(memory.skills).toHaveLength(1);
+    expect(memory.skills[0]).toMatchObject({ name: '星火术' });
+    expect(memory.skills[0].desc).toBeUndefined();
+    expect(memory.items[0].qty).toBe(1);
+    expect(editNpc(name, { name: '艾琳娜' })).toBe(true);
+    expect(memory.npcs[0].skills).toContain('霜盾');
+    expect(editNpc('艾琳娜', { skills: '' })).toBe(true);
+    expect(memory.npcs[0].skills).toBeUndefined();
+  });
+  it('主模型状态与前往地点草稿受技能开关控制，仅摘要模式不注入技能状态', () => {
+    useChat([message(known())]);
+    const target = { id: 'scene:客栈', name: '客栈', path: ['客栈'], parentId: '', desc: '休息处', createdAt: 1, updatedAt: 1 };
+    for (const enabled of [false, true, false]) {
+      settings.apiSettings.skillsEnabled = enabled;
+      for (const text of [inject.buildStateInjectionText(), inject.buildTravelDraft(target)]) {
+        expect(text.includes('星火术')).toBe(enabled);
+        expect(text.includes('霜盾')).toBe(enabled);
+        expect(text).toContain('艾琳');
+      }
+    }
+    settings.apiSettings.skillsEnabled = true;
+    settings.apiSettings.summaryOnlyMode = true;
+    expect(inject.buildStateInjectionText()).toBe('');
+    expect(memory.skills[0].name).toBe('星火术');
+  });
+  it.each([false, true])('真实摘要请求与响应遵守技能开关：%s', async enabled => {
+    settings.apiSettings.skillsEnabled = enabled;
+    const next = message(); delete next.extra!.bbs_leaf;
+    const chat = [message(known()), next];
+    useChat(chat);
+    vi.spyOn(client, 'requestViaMainApi').mockResolvedValue(JSON.stringify({
+      summary: '主角掌握了新能力。', timeStart: '2026/9/13 10:00', timeEnd: '2026/9/13 10:05',
+      skills: { add: [{ name: '闪烁', desc: '短距离移动' }] },
+      npcs: { update: [{ name, skills: '霜盾；寒箭' }] },
+    }));
+    await summarizeFloor(1);
+    const prompt = vi.mocked(client.requestViaMainApi).mock.calls[0][0].map(m => m.content).join('\n');
+    expect(prompt.includes('星火术')).toBe(enabled);
+    expect(prompt.includes('霜盾')).toBe(enabled);
+    expect(memory.skills.some(s => s.name === '闪烁')).toBe(enabled);
+    expect(memory.npcs[0].skills).toBe(enabled ? '霜盾；寒箭' : '霜盾：抵挡一次攻击');
+  });
+  it.each([false, true])('向量查询重写的技能快照和规则遵守开关：%s', async enabled => {
+    settings.apiSettings.skillsEnabled = enabled;
+    settings.apiSettings.keepRecent = 1;
+    const user: STMessage = { name: 'User', is_user: true, is_system: false, mes: '继续赶路。' };
+    useChat([message(known()), user]);
+    const request = vi.spyOn(embeddings, 'fetchWithTimeoutRetry').mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: 'INTENT: 赶路\nQ: 沿途经历' } }] })));
+    await rewriteQuery();
+    const body = String(request.mock.calls[0][1].body);
+    expect(body.includes('星火术')).toBe(enabled);
+    expect(body.includes('霜盾')).toBe(enabled);
+    expect(body.includes('检索对应人物的技能习得')).toBe(enabled);
+  });
+  it.each([false, true])('换对话完整继承窗口外和窗口内的技能，关闭也不丢数据：%s', async enabled => {
+    settings.apiSettings.skillsEnabled = enabled;
+    settings.apiSettings.keepRecent = 1;
+    const chat = [message(known()), message({ skills: { update: [{ name: '星火术', desc: '新版' }] } })];
+    const source = useChat(chat);
+    const before = JSON.stringify(chat);
+    const target = { ...source, chat: [] as STMessage[], chatMetadata: {}, getCurrentChatId: () => 'skills-carried' };
+    vi.spyOn(context, 'getDoNewChat').mockResolvedValue(async () => { vi.mocked(context.getContext).mockReturnValue(target); });
+    vi.spyOn(inject, 'refreshInjection').mockImplementation(() => {});
+    expect(await createNewChatWithCarryover()).toBe(true);
+    expect(JSON.stringify(chat)).toBe(before);
+    expect(target.chat[0].extra!.bbs_leaf!.delta.skills!.add![0].desc).toContain('三点法力');
+    expect(deriveMemory(target.chat).skills[0].desc).toBe('新版');
+    expect(deriveMemory(target.chat).npcs[0].skills).toContain('霜盾');
+  });
 });
 
 describe('定性档位与未知', () => {

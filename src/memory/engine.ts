@@ -1165,10 +1165,11 @@ async function summarizeFloorWork(
     sceneFocus: stateBefore.state.sceneFocus,
     lifeDetails: stateBefore.lifeDetails,
     protagonist: stateBefore.protagonist,
+    skills: stateBefore.skills,
     items: stateBefore.items.map(i => ({ name: i.name, qty: i.qty, desc: i.desc, carried: i.carried, location: i.location })),
     itemLog: stateBefore.itemLog,
     scenes: stateBefore.scenes.map(s => ({ path: s.path, desc: s.desc })),
-    npcs: stateBefore.npcs.map(n => ({ name: n.name, gender: n.gender, age: n.age, ageTime: n.ageTime, relation: n.relation, affinityInner: n.affinityInner, affinityOuter: n.affinityOuter, affinityNote: n.affinityNote, ties: n.ties, title: n.title, personality: n.personality, important: n.important, outfit: n.outfit, condition: n.condition ? fmtConditionFragments(n.condition) : undefined, follow: n.follow, location: n.location,
+    npcs: stateBefore.npcs.map(n => ({ name: n.name, gender: n.gender, age: n.age, ageTime: n.ageTime, relation: n.relation, affinityInner: n.affinityInner, affinityOuter: n.affinityOuter, affinityNote: n.affinityNote, ties: n.ties, title: n.title, personality: n.personality, important: n.important, skills: n.skills, outfit: n.outfit, condition: n.condition ? fmtConditionFragments(n.condition) : undefined, follow: n.follow, location: n.location,
       // 在场标记按「本楼之前」的状态算,要 AI 逐个对照做离场/归场对账(与注入端同一权威判定)
       presence: classifyNpcPresence(n, stateBefore.scenes, stateBefore.state.location, stateBefore.state.locationPath) })),
     openPlans: openPlansOrdered.map(p => ({ kind: p.kind, content: p.content, createdTime: p.createdTime, targetTime: p.targetTime })),
@@ -1938,9 +1939,12 @@ export function bindEngine(): void {
     },
   );
 
-  // 仅摘要模式切换后立即刷新持久化的 ST 提示槽;正文中的既有旁注不主动清理。
+  // 状态或技能开关变化后立即刷新提示槽，防止技能关闭后仍残留在下一轮上下文。
   watch(
-    () => apiSettings.summaryOnlyMode,
-    () => refreshInjection(),
+    () => [apiSettings.summaryOnlyMode, apiSettings.skillsEnabled],
+    () => {
+      invalidateRecallCache();
+      refreshInjection();
+    },
   );
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Icon from '@/components/Icon.vue';
-import { PAGES } from '@/pages/registry';
+import { visiblePages } from '@/pages/registry';
 import { closeBook, ui } from '@/state/ui';
 import { updateState } from '@/memory/update';
 
@@ -25,7 +25,7 @@ function onNavClick(id: string) {
 <template>
   <nav class="bbs-nav" :class="[`is-${placement}`, { 'is-narrow': narrow }]">
     <button
-      v-for="p in PAGES"
+      v-for="p in visiblePages"
       :key="p.id"
       class="bbs-nav-item"
       :class="{ 'is-active': ui.activePage === p.id }"
@@ -55,6 +55,7 @@ function onNavClick(id: string) {
 
 /* —— 顶部:胶囊分段,横排图标+字 —— */
 .bbs-nav.is-top {
+  flex-wrap: wrap;
   gap: 4px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--bbs-line);

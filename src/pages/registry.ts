@@ -1,5 +1,8 @@
 import type { Component } from 'vue';
 import Items from './items/index.vue';
+import Skills from './skills/index.vue';
+import { apiSettings } from '@/api/settings';
+import { computed } from 'vue';
 import Npcs from './npcs/index.vue';
 import Scenes from './scenes/index.vue';
 import Settings from './settings/index.vue';
@@ -23,6 +26,7 @@ export interface PageDef {
 export const PAGES: PageDef[] = [
   { id: 'summary', label: '摘要', component: Summary },
   { id: 'items', label: '物品', component: Items },
+  { id: 'skills', label: '技能', component: Skills },
   { id: 'scenes', label: '场景', component: Scenes },
   { id: 'npcs', label: '角色', component: Npcs },
   { id: 'vars', label: '变量', component: Vars },
@@ -30,5 +34,7 @@ export const PAGES: PageDef[] = [
 ];
 
 export function getPage(id: string): PageDef {
-  return PAGES.find(p => p.id === id) ?? PAGES[0];
+  return visiblePages.value.find(p => p.id === id) ?? PAGES[0];
 }
+
+export const visiblePages = computed(() => PAGES.filter(p => p.id !== 'skills' || apiSettings.skillsEnabled));

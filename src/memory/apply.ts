@@ -10,6 +10,7 @@ import { scheduleVectorIndex } from './vector';
 import { invalidateRecallCache } from './vector/cache';
 import { applyConditionPatch, hasConditionPatchContent } from './conditionPatch';
 import { createEmptyMemory } from './types';
+import type { SkillChanges, SkillDelta } from './types';
 import type { BaibaiMemory, ConditionPatch, ConditionPatchOp, ItemDelta, ItemLogEntry, JsonValue, LeafExtra, LifeDetailAdd, LifeDetailUpdate, MemLifeDetail, MemNpc, MemPlan, MemScene, MemSummary, NpcAffinity, NpcDelta, NpcPresence, PlanResolveItem, PlanUpdateItem, ProtagonistDelta, SceneDelta, SceneFocus, SceneOp, SceneReparent, StoredDelta, SummaryDelta, VarOp, VarTemplate, VarTier } from './types';
 
 // 供既有调用方继续从 apply 取在场类型;定义在 types.ts 与名册展示共用。
@@ -115,6 +116,24 @@ function cleanItemDelta(raw: unknown): ItemDelta | null {
 
 function cleanItemList(v: unknown): ItemDelta[] {
   return arr(v).map(cleanItemDelta).filter((x): x is ItemDelta => !!x);
+}
+
+/** 技能没有数量；描述空串必须保留，供手动清空或明确失效时使用。 */
+function cleanSkillChanges(raw: unknown): SkillChanges | undefined {
+  if (!isRecord(raw)) return undefined;
+  const out: SkillChanges = {};
+  for (const bucket of ['add', 'update'] as const) {
+    const entries: SkillDelta[] = [];
+    for (const value of arr(raw[bucket])) {
+      if (!isRecord(value)) continue;
+      const name = optText(value.name);
+      if (name) entries.push({ name, desc: patchText(value.desc) });
+    }
+    if (entries.length) out[bucket] = entries;
+  }
+  const remove = cleanTextList(raw.remove, ['name']);
+  if (remove.length) out.remove = remove;
+  return Object.keys(out).length ? out : undefined;
 }
 
 function cleanSceneDelta(raw: unknown): SceneDelta | null {
@@ -237,6 +256,7 @@ function cleanNpcDelta(raw: unknown, guard?: LocationEvidenceGuard): NpcDelta | 
   }
   const out: NpcDelta = {
     name,
+    skills: patchText(raw.skills),
     gender: optText(raw.gender),
     age: optText(raw.age),
     ageTime: optText(raw.ageTime),
@@ -399,6 +419,7 @@ function cleanStoredPlanUpdateList(v: unknown): PlanUpdateItem[] {
 function cleanStoredDelta(raw: StoredDelta): StoredDelta {
   if (!isRecord(raw)) return {};
   const out: StoredDelta = {};
+  out.skills = cleanSkillChanges(raw.skills);
   const time = optText(raw.time);
   const location = optText(raw.location);
   const locationPath = cleanPath(raw.locationPath);
@@ -836,7 +857,8 @@ function applyNpcPlacement(n: { follow?: boolean; location?: string }, src: NpcD
  * 与档案层(desc/title)不同:即时层一旦 delta 给了就**直接覆盖**(它本就是当前快照,
  * 不像 desc 那样「实质变化才动」);add 与 update 同样处理,确保换装/受伤能即时刷新。
  */
-function applyNpcState(n: { outfit?: string; condition?: string; important?: boolean }, src: NpcDelta): void {
+function applyNpcState(n: { outfit?: string; condition?: string; important?: boolean; skills?: string }, src: NpcDelta): void {
+  if (typeof src.skills === 'string') n.skills = src.skills.trim() || undefined;
   if (typeof src.outfit === 'string') n.outfit = src.outfit.trim() || undefined;
   if (typeof src.condition === 'string') n.condition = src.condition.trim() || undefined;
   // 伤情局部更新:未列入 replace 的旧片段保留,不会自动回血。
@@ -1329,6 +1351,22 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
     }
   }
 
+  // 历史重放始终保留技能数据，开关只控制新分析、界面与提示词，不清空已有记录。
+  for (const entry of [...(d.skills?.add ?? []), ...(d.skills?.update ?? [])]) {
+    const id = `skill:${norm(entry.name)}`;
+    let skill = mem.skills.find(s => s.id === id);
+    if (!skill) {
+      skill = { id, name: entry.name, createdAt: t, updatedAt: t };
+      mem.skills.push(skill);
+    }
+    if (entry.desc !== undefined) skill.desc = entry.desc || undefined;
+    skill.updatedAt = t;
+  }
+  for (const name of d.skills?.remove ?? []) {
+    const index = mem.skills.findIndex(s => s.id === `skill:${norm(name)}`);
+    if (index >= 0) mem.skills.splice(index, 1);
+  }
+
   // 场景 / 地点。旧的 AI/历史分桶保持 add → update → reparent → remove，确保向后兼容；
   // 新版 UI 手动操作统一写入 ops，并在旧分桶之后严格按用户操作顺序重放。
   if (d.scenes) {
@@ -1536,11 +1574,11 @@ function applyStoredDeltaTo(mem: BaibaiMemory, d: StoredDelta, leaf: { id: strin
 export function deriveMemory(
   chat: STMessage[] | null,
   upToExclusive?: number,
-): Pick<BaibaiMemory, 'state' | 'protagonist' | 'items' | 'plans' | 'scenes' | 'npcs' | 'itemLog' | 'lifeDetails' | 'vars'> {
+): Pick<BaibaiMemory, 'state' | 'protagonist' | 'items' | 'skills' | 'plans' | 'scenes' | 'npcs' | 'itemLog' | 'lifeDetails' | 'vars'> {
   const mem = createEmptyMemory();
   // 变量从三层合并模板起算(无 chat 也返回初始状态);seed 时展开模板里的 ST 宏({{user}} 等)
   mem.vars = expandVarMacros(mergeTemplates(memory.varTemplates));
-  if (!chat) return { state: mem.state, protagonist: mem.protagonist, items: mem.items, plans: mem.plans, scenes: mem.scenes, npcs: mem.npcs, itemLog: mem.itemLog, lifeDetails: mem.lifeDetails, vars: mem.vars };
+  if (!chat) return { state: mem.state, protagonist: mem.protagonist, items: mem.items, skills: mem.skills, plans: mem.plans, scenes: mem.scenes, npcs: mem.npcs, itemLog: mem.itemLog, lifeDetails: mem.lifeDetails, vars: mem.vars };
   const end = typeof upToExclusive === 'number' ? Math.min(upToExclusive, chat.length) : chat.length;
   for (let i = 0; i < end; i++) {
     if (chat[i]?.extra?.bbs_omit) continue; // 番外楼:不参与派生重放
@@ -1552,7 +1590,7 @@ export function deriveMemory(
   }
   // 只留最近若干条变动(注入/喂模型够用即可,省 token)
   if (mem.itemLog.length > ITEM_LOG_KEEP) mem.itemLog = mem.itemLog.slice(-ITEM_LOG_KEEP);
-  return { state: mem.state, protagonist: mem.protagonist, items: mem.items, plans: mem.plans, scenes: mem.scenes, npcs: mem.npcs, itemLog: mem.itemLog, lifeDetails: mem.lifeDetails, vars: mem.vars };
+  return { state: mem.state, protagonist: mem.protagonist, items: mem.items, skills: mem.skills, plans: mem.plans, scenes: mem.scenes, npcs: mem.npcs, itemLog: mem.itemLog, lifeDetails: mem.lifeDetails, vars: mem.vars };
 }
 
 /** 变动日志保留的最近条数(注入与喂摘要共用)。 */
@@ -1681,6 +1719,7 @@ function parseShortRef(ref: string): number | null {
  */
 export function finalizeDelta(delta: SummaryDelta, openPlansOrdered: { id: string }[], lifeDetailsOrdered: { id: string }[] = [], guard?: LocationEvidenceGuard): StoredDelta {
   const out: StoredDelta = {};
+  if (apiSettings.skillsEnabled) out.skills = cleanSkillChanges(delta.skills);
   const time = optText(delta.time);
   const location = optText(delta.location);
   if (time) out.time = time;
@@ -1720,6 +1759,10 @@ export function finalizeDelta(delta: SummaryDelta, openPlansOrdered: { id: strin
     const npcs: NonNullable<StoredDelta['npcs']> = {};
     const add = cleanNpcList(delta.npcs.add, guard);
     const update = cleanNpcList(delta.npcs.update, guard);
+    // 即使模型沿用旧模板输出了技能，关闭功能后也不能接收新技能更新。
+    if (!apiSettings.skillsEnabled) {
+      for (const npc of [...add, ...update]) delete npc.skills;
+    }
     const remove = cleanTextList(delta.npcs.remove, ['name', 'npc', 'id']);
     if (add.length) npcs.add = add;
     if (update.length) npcs.update = update;
@@ -1861,6 +1904,26 @@ export function appendOpToLatestLeaf(op: StoredDelta): boolean {
   const chat = getContext()!.chat;
   const d: StoredDelta = (leaf.delta ??= {});
   let changed = false;
+
+  const skills = cleanSkillChanges(op.skills);
+  if (skills) {
+    changed = true;
+    const ds = (d.skills ??= {});
+    for (const name of skills.remove ?? []) {
+      ds.add = ds.add?.filter(s => norm(s.name) !== norm(name));
+      ds.update = ds.update?.filter(s => norm(s.name) !== norm(name));
+      ds.remove = [...(ds.remove ?? []).filter(s => norm(s) !== norm(name)), name];
+    }
+    // 技能 add/update 都是覆盖补丁，合并为最后一次操作，避免同叶子分桶重放颠倒编辑顺序。
+    for (const entry of [...(skills.add ?? []), ...(skills.update ?? [])]) {
+      ds.remove = ds.remove?.filter(s => norm(s) !== norm(entry.name));
+      const previous = [...(ds.add ?? []), ...(ds.update ?? [])].filter(s => norm(s.name) === norm(entry.name));
+      const merged = Object.assign({}, ...previous, entry);
+      if (entry.desc === undefined) merged.desc = previous.findLast(s => s.desc !== undefined)?.desc;
+      ds.add = ds.add?.filter(s => norm(s.name) !== norm(entry.name));
+      ds.update = [...(ds.update ?? []).filter(s => norm(s.name) !== norm(entry.name)), merged];
+    }
+  }
 
   if (op.protagonist) {
     d.protagonist = mergeProtagonistDelta(d.protagonist, op.protagonist);
@@ -2061,6 +2124,7 @@ export function upsertNpc(
     personality?: string;
     outfit?: string;
     condition?: string;
+    skills?: string;
     important?: boolean;
     follow?: boolean;
     location?: string;
@@ -2084,6 +2148,7 @@ export function upsertNpc(
         personality: fields.personality?.trim() || undefined,
         outfit: fields.outfit?.trim() || undefined,
         condition: fields.condition?.trim() || undefined,
+        skills: fields.skills?.trim(),
         important: fields.important,
         follow: fields.follow,
         location: fields.location?.trim() || undefined,
@@ -2112,6 +2177,7 @@ export function editNpc(
     personality?: string;
     outfit?: string;
     condition?: string;
+    skills?: string;
     important?: boolean;
     follow?: boolean;
     location?: string;
@@ -2133,6 +2199,7 @@ export function editNpc(
   const outfit = patch.outfit !== undefined ? (patch.outfit.trim() || undefined) : prev?.outfit;
   const condition = patch.condition !== undefined ? (patch.condition.trim() || undefined) : prev?.condition;
   const important = patch.important !== undefined ? patch.important : prev?.important;
+  const skills = patch.skills !== undefined ? patch.skills.trim() : prev?.skills;
 
   // 年龄:值没变(或未提供)时必须连旧锚点一起带上,否则重放会把锚点错误刷新到本叶子时间(等于冻龄);
   // 用户真改了年龄才留空 ageTime,让重放盖上当前故事时间作新锚点。
@@ -2143,7 +2210,7 @@ export function editNpc(
   const affinity: NpcAffinity = {};
   if (prev && norm(newName) !== norm(oldName)) applyNpcAffinity(affinity, prev);
   applyNpcAffinity(affinity, patch);
-  const fields = { gender, age, ageTime, relation, ties, title, desc, personality, outfit, condition, important, follow, location, ...affinity };
+  const fields = { gender, age, ageTime, relation, ties, title, desc, personality, outfit, condition, skills, important, follow, location, ...affinity };
   if (norm(newName) !== norm(oldName)) {
     return appendOpToLatestLeaf({
       npcs: { remove: [oldName], add: [{ name: newName, ...fields }] },

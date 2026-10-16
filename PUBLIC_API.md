@@ -85,6 +85,7 @@ console.log(snapshot.state);
 console.log(snapshot.protagonist);
 console.log(snapshot.vars);
 console.log(snapshot.items);
+console.log(snapshot.skills);
 console.log(snapshot.plans);
 console.log(snapshot.scenes);
 console.log(snapshot.npcs);
@@ -124,6 +125,7 @@ console.log(snapshot.lifeDetails);
   },
   vars: {},
   items: [],
+  skills: [],
   plans: [],
   scenes: [],
   npcs: [],
@@ -141,6 +143,8 @@ console.log(snapshot.lifeDetails);
 | `affinityNote` | 一句依据、表现或矛盾说明 |
 
 两侧都可能缺失或为 `null`，表示未知，不能按 `0` 处理。楼层 delta 中省略字段表示保持，`null` 表示撤回该侧估计，`affinityNote: ""` 表示清空说明。估计不等于已证实的心理事实，也不代表爱情、信任、服从或同意。
+
+`snapshot.skills` 是主角技能数组，每项包含 `id`、`name`、可选的 `desc`、`createdAt` 和 `updatedAt`。主要角色的技能说明存于 `snapshot.npcs[].skills`（可选字符串）。技能开关默认关闭，只控制技能界面、新增自动提取和模型提示词；公开只读快照仍保留已有技能数据，便于备份和历史查询。
 
 `snapshot.lifeDetails` 为按人物记录的生活小档案。`subject: "user"` 表示主角，其他字符串为角色在 NPC 名册中的名字；旧叶子缺少 `subject` 时按原有主角专用语义处理，不从正文猜人物。`text` 是该人物的细节正文，显示或注入时会加上姓名。相同内容按人物分别去重，不能跨人合并。
 

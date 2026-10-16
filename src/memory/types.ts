@@ -19,6 +19,25 @@ export const MEMORY_KEY = 'baibai_book';
 /** 3 = 混合架构(叶子在消息 extra);2 = 叶子也在森林;1 = 独立 items/plans/state */
 export const MEMORY_VERSION = 3;
 
+/** 主角已掌握的技能；随楼层增量重放，不与有数量的物品混记。 */
+export interface SkillDelta {
+  name: string;
+  /** 效果、等级、使用条件等；省略保持，空字符串清空。 */
+  desc?: string;
+}
+
+export interface MemSkill extends SkillDelta {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SkillChanges {
+  add?: SkillDelta[];
+  update?: SkillDelta[];
+  remove?: string[];
+}
+
 /**
  * 物品(派生产物,不持久化)。
  * id 是**确定性**的:`item:${规范化名}`,故重放每次得到同一 id,手动 op 可稳定引用。
@@ -181,6 +200,8 @@ export type NpcPresence = 'present' | 'nearby' | 'absent';
  * important=true 的「主要角色」:永远全量注入(跳过在场判定),界面/注入弱化档案、突出即时状态面板。
  */
 export interface MemNpc extends NpcAffinity {
+  /** 主要角色的完整技能说明；省略保持，空字符串清空。 */
+  skills?: string;
   id: string;
   /** 名字(同时作为匹配键) */
   name: string;
@@ -460,6 +481,8 @@ export interface BaibaiMemory {
   protagonist: MemProtagonist;
   /** 派生缓存 */
   items: MemItem[];
+  /** 派生缓存：主角技能清单。 */
+  skills: MemSkill[];
   /** 派生缓存 */
   plans: MemPlan[];
   /** 派生缓存:走过的地点(地理嵌套树,从叶子 delta 重放) */
@@ -484,6 +507,7 @@ export function createEmptyMemory(): BaibaiMemory {
     state: { time: '', location: '', sceneFocus: null },
     protagonist: {},
     items: [],
+    skills: [],
     plans: [],
     lifeDetails: [],
     scenes: [],
@@ -510,6 +534,7 @@ export interface ItemDelta {
 
 /** NPC 指令里单个角色的形状(AI / 手动共用) */
 export interface NpcDelta extends NpcAffinity {
+  skills?: string;
   name: string;
   /** 性别(档案层,短值;所有分档都注入) */
   gender?: string;
@@ -618,6 +643,8 @@ export type SceneOp =
 
 /** AI 摘要返回的完整 JSON(协议保持不变:AI 只产 add/update/remove/resolve) */
 export interface SummaryDelta {
+  /** 技能系统开启时才接收的主角技能增量。 */
+  skills?: SkillChanges;
   /** 本楼层叙事摘要正文 */
   summary?: string;
   /**
@@ -700,6 +727,7 @@ export interface SummaryDelta {
  * AI 永远不产这些内部 op;它们只在 UI 手动改动时写入。
  */
 export interface StoredDelta {
+  skills?: SkillChanges;
   time?: string;
   location?: string;
   /** 覆盖型:当前所在的已记录场景节点完整路径(由粗到细);权威定位 */

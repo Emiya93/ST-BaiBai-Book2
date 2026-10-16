@@ -21,6 +21,7 @@ import { resolveKeepStart } from '../engine';
 import { renderHistoryNodes, selectHistoryNodesBefore } from '../inject';
 import { fmtItems, fmtNpcs, fmtPlans, fmtProtagonist, JAILBREAK_PROMPT, QUERY_REWRITE_SYSTEM, QUERY_REWRITE_TAIL } from '../prompts';
 import { memory } from '../store';
+import { fmtSkills } from '../prompts';
 import { cleanBody } from '../timeTag';
 import { fetchWithTimeoutRetry } from './embed';
 
@@ -62,8 +63,9 @@ function buildStateSnapshot(chat: STMessage[], upTo: number): string {
     lines.push(`物品清单:\n${fmtItems(st.items.map(i => ({ name: i.name, qty: i.qty, desc: i.desc, carried: i.carried, location: i.location })))}`);
   }
   if (st.npcs.length) {
-    lines.push(`NPC名册:\n${fmtNpcs(st.npcs.map(n => ({ name: n.name, gender: n.gender, title: n.title, follow: n.follow, location: n.location })))}`);
+    lines.push(`NPC名册:\n${fmtNpcs(st.npcs.map(n => ({ name: n.name, gender: n.gender, title: n.title, follow: n.follow, location: n.location, important: apiSettings.skillsEnabled ? n.important : undefined, skills: n.skills })))}`);
   }
+  if (apiSettings.skillsEnabled && st.skills.length) lines.push(`主角技能:\n${fmtSkills(st.skills)}`);
   const openPlans = st.plans.filter(p => p.status === 'open');
   if (openPlans.length) {
     lines.push(`未了结的计划/悬念:\n${fmtPlans(openPlans.map(p => ({ kind: p.kind, content: p.content, createdTime: p.createdTime, targetTime: p.targetTime })))}`);
@@ -103,7 +105,8 @@ function buildMessages(chat: STMessage[]): ChatMsg[] {
   const history = renderHistoryNodes(selectHistoryNodesBefore(memory.summaries, chat, windowStart));
   const body = history ? `${QUERY_REWRITE_SYSTEM}\n\n[历史剧情摘要]\n${history}` : QUERY_REWRITE_SYSTEM;
   const jb = apiSettings.prompts.jailbreak.trim() || JAILBREAK_PROMPT;
-  const systemContent = `${jb}\n\n${body}`;
+  const systemContent = `${jb}\n\n${body}`
+    + (apiSettings.skillsEnabled ? '\n技能相关续写需要时，检索对应人物的技能习得、升级、效果与使用限制；按人物区分，不臆测未掌握的技能。' : '');
   const messages: ChatMsg[] = [{ role: 'system', content: systemContent }];
 
   // 平铺窗口对话(纯 user/assistant),记录原 msgIndex 以定位快照插入点

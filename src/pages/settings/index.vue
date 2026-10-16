@@ -993,6 +993,14 @@ function exportPublicApiDocument() {
       </Collapsible>
 
       <!-- 注入设置 -->
+      <Collapsible title="技能系统" :open="false">
+        <label class="bbs-switch-row">
+          <span class="bbs-field-label">启用技能记录</span>
+          <input v-model="apiSettings.skillsEnabled" type="checkbox" class="bbs-checkbox" />
+        </label>
+        <p class="bbs-field-hint">开启后显示技能页签和主要角色技能栏，摘要会记录主角与主要角色明确掌握的技能，并在提示词中提供技能及其限制。关闭后隐藏入口、停止技能提取与注入，已有技能保留；重新开启即可继续使用。「仅注入剧情摘要」仍会阻止技能状态向主模型注入。</p>
+      </Collapsible>
+
       <Collapsible title="注入设置" :open="false">
         <p class="bbs-field-hint">选择哪些状态块注入主对话(生成正文的请求)。这些开关<strong>只影响主模型看到的内容</strong>:副 API 摘要始终能看到全量状态、照常记录,关闭某项不会导致重复记录。时间/地点、计划/悬念与自定义变量保持常驻,不在此处开关。</p>
 

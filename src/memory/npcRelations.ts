@@ -53,6 +53,7 @@ export interface NpcSummaryView extends NpcAffinity {
   important?: boolean;
   outfit?: string;
   condition?: string;
+  skills?: string;
   follow?: boolean;
   location?: string;
   /** 摘要名册在场标记:由 engine 用 classifyNpcPresence 按「本楼之前」的状态算好;缺省不显示标记 */
@@ -60,7 +61,7 @@ export interface NpcSummaryView extends NpcAffinity {
 }
 
 /** 给摘要模型的已登场 NPC 名册。长期关系必须随既有状态一起给模型，才能做整体覆盖更新。 */
-export function fmtNpcSummaryList(npcs: NpcSummaryView[]): string {
+export function fmtNpcSummaryList(npcs: NpcSummaryView[], includeSkills = false): string {
   if (!npcs.length) return '  (无)';
   return npcs
     .map(n => {
@@ -87,6 +88,7 @@ export function fmtNpcSummaryList(npcs: NpcSummaryView[]): string {
       const state: string[] = [];
       if (oneLine(n.outfit)) state.push(`着装:${oneLine(n.outfit)}`);
       if (oneLine(n.condition)) state.push(`状态:${oneLine(n.condition)}`);
+      if (includeSkills && n.important && oneLine(n.skills)) state.push(`技能:${oneLine(n.skills)}`);
       const stateStr = state.length ? ` 〔${state.join(';')}〕` : '';
       return `  - ${star}${oneLine(n.name)}${bracket}${mark}${place}${title}${stateStr}`;
     })

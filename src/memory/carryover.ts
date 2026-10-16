@@ -74,6 +74,9 @@ function deltaHasData(delta: StoredDelta): boolean {
     delta.items?.add?.length ||
     delta.items?.update?.length ||
     delta.items?.remove?.length ||
+    delta.skills?.add?.length ||
+    delta.skills?.update?.length ||
+    delta.skills?.remove?.length ||
     delta.scenes?.add?.length ||
     delta.scenes?.update?.length ||
     delta.scenes?.reparent?.length ||
@@ -134,6 +137,9 @@ function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: stri
       })),
     };
   }
+  if (state.skills.length) {
+    delta.skills = { add: state.skills.map(s => ({ name: s.name, desc: s.desc })) };
+  }
   if (state.scenes.length) {
     delta.scenes = {
       add: [...state.scenes]
@@ -162,6 +168,7 @@ function encodeStateAsDelta(state: ReturnType<typeof deriveMemory>, leafId: stri
         personality: n.personality,
         outfit: n.outfit,
         condition: n.condition,
+        skills: n.skills,
         important: n.important,
         follow: n.follow,
         location: n.location,

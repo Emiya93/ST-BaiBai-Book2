@@ -2,6 +2,7 @@ import type {
   ItemLogEntry,
   JsonValue,
   MemItem,
+  MemSkill,
   MemLifeDetail,
   MemNpc,
   MemPlan,
@@ -61,6 +62,7 @@ export interface PublicSnapshot {
   protagonist: MemProtagonist;
   vars: Record<string, JsonValue>;
   items: MemItem[];
+  skills: MemSkill[];
   plans: MemPlan[];
   scenes: MemScene[];
   npcs: MemNpc[];

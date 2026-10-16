@@ -136,6 +136,7 @@ export function getSnapshot(options?: SnapshotOptions): PublicSnapshot {
     protagonist: derived.protagonist,
     vars: derived.vars,
     items: derived.items,
+    skills: derived.skills,
     plans: derived.plans,
     scenes: derived.scenes,
     npcs: derived.npcs,

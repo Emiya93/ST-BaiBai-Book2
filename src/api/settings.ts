@@ -199,6 +199,8 @@ export interface ApiSettings {
    * 也不再把物品/变量变动旁注写回正文。已有正文旁注不主动清理。
    */
   summaryOnlyMode: boolean;
+  /** 技能页签、主要角色技能栏及模型技能协议的总开关；默认关闭。 */
+  skillsEnabled: boolean;
   /** 注入设置:各状态块是否注入主模型(仅摘要模式开启时整组不生效) */
   injection: InjectionSections;
   /** 保留最近 N 条 AI 消息发全文(滑动窗口);更早的自动摘要并隐藏 */
@@ -342,6 +344,7 @@ function defaults(): ApiSettings {
     assignments: { summary: '', resummary: '' },
     autoSummaryEnabled: true,
     summaryOnlyMode: false,
+    skillsEnabled: false,
     injection: { sceneFocus: true, lifeDetails: true, protagonist: true, npcs: true, npcAffinity: true, items: true, scenes: true },
     keepRecent: 3,
     excludedChars: [],
@@ -370,6 +373,7 @@ function normalize(raw: unknown): ApiSettings {
   if (!raw || typeof raw !== 'object') return defaults();
   const d = defaults();
   const merged = { ...d, ...(raw as Partial<ApiSettings>) };
+  merged.skillsEnabled = (raw as Partial<ApiSettings>).skillsEnabled === true;
   // prompts 是嵌套对象,展开合并不会补全缺字段,单独兜底(老数据没有 prompts 键时回退默认)
   merged.prompts = { ...d.prompts, ...((raw as Partial<ApiSettings>).prompts ?? {}) };
   // ui 同为嵌套对象,逐字段兜底(老数据没有 ui 键时回退默认,值非字符串时丢弃)
@@ -595,6 +599,7 @@ function applyInto(target: ApiSettings, src: ApiSettings): void {
   target.assignments = src.assignments;
   target.autoSummaryEnabled = src.autoSummaryEnabled;
   target.summaryOnlyMode = src.summaryOnlyMode;
+  target.skillsEnabled = src.skillsEnabled;
   target.injection = src.injection;
   target.keepRecent = src.keepRecent;
   target.excludedChars = src.excludedChars;

@@ -77,7 +77,7 @@ summary 是事件记忆,记录具体言行、条件与后果。其他字段分�
     "add": [{ "kind": "plan", "content": "新出现且符合准入的计划/目标;条款保留触发条件、后果对象和前后时间范围", "createdTime": "立计划时的故事内时间", "targetTime": "打算完成的目标时间(见下)" }, { "kind": "suspense", "content": "正文明确留下的待揭晓事实,或已经启动且等待结果的外部事件", "createdTime": "悬念出现时的故事内时间" }],
     "update": [{ "id": "p1", "content": "同一未了结事项的新安排,保留仍有效目标、条件及暂缓状态", "targetTime": "仅变更时填;撤销旧期限而新期未定填空字符串" }],
     "resolve": [{ "id": "p1", "outcome": "done|cancelled|failed", "reason": "实际结果或替代/撤销依据;不虚构时差和付款" }]
-  }{{lifedetails_field}}{{vars_field}}
+  }{{skills_field}}{{lifedetails_field}}{{vars_field}}
 }
 
 {{time_rule}}
@@ -298,6 +298,7 @@ reason 必填一句,写清「为什么了结 / 如何收场」,不为解释完�
 - tension：只有明确的、正在持续的社交张力才写；普通语气变化或短暂情绪不写，无则省略。
 - pendingBeat 不重复 situation：先检查是否只是将 situation 的准备/等待改成将来时；是则省略。只留独立的紧接事项，且正文明确预告/约定/已启动等待结果。禁止预测未发生剧情，无则省略；不为把可选字段填满而另造下一步。
 【克制】局势与张力供写作自然衔接，不是正文台词或旁白，不复述卡片格式或点破记录。
+{{skills_rule}}
 {{lifedetails_rule}}{{vars_rule}}
 ═══ 【摘要撰写规则】(summary 字段,必填) ═══
 ★ 核心目标:为未来的 AI 提供可靠的"前情提要",优先讲清关键变化。没有最低篇幅任务：{{summary_words}} 仅是信息密集时的参考，summary 最多 {{summary_max_chars}} 字符（含标点）；不按输入长度等比例缩写，关键事实写完即停，长原文也可能只需几句。
@@ -389,6 +390,7 @@ reason 必填一句,写清「为什么了结 / 如何收场」,不为解释完�
 {{protagonist_block}}
 - 现有物品:
 {{items_block}}
+{{skills_state_block}}
 - 近期物品变动(已应用的记录,只读参考,严禁重复结算 —— 见下方【物品规则】):
 {{itemlog_block}}
 - 已知地点(已记录的场景,复用其命名、勿重复记录 —— 见下方【场景/地点规则】):

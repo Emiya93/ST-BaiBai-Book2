@@ -27,6 +27,7 @@ import tasksRaw from './prompts/tasks.txt?raw';
 import builtinProtocolsRaw from './prompts/builtin-protocols.txt?raw';
 import dataWrappersRaw from './prompts/data-wrappers.txt?raw';
 import type { ItemLogEntry, JsonValue, MemLifeDetail, MemPlan, MemProtagonist, PlanOutcome, SceneFocus } from './types';
+import type { SkillDelta } from './types';
 
 /** 按「===== NAME =====」分节解析协议文件(08)。 */
 function protocolSections(raw: string): Record<string, string> {
@@ -95,6 +96,10 @@ export const SUMMARY_MACROS: PromptMacro[] = [
   { token: '{{state_location}}', desc: '当前已知地点' },
   { token: '{{protagonist_block}}', desc: '主角当前客观档案' },
   { token: '{{items_block}}', desc: '现有物品清单' },
+  { token: '{{skills_block}}', desc: '主角技能清单(技能开关关闭时为空)' },
+  { token: '{{skills_state_block}}', desc: '带标题的技能清单(受技能开关控制)' },
+  { token: '{{skills_field}}', desc: '技能增量 JSON 示例(受技能开关控制)' },
+  { token: '{{skills_rule}}', desc: '主角与主要角色技能维护规则(受技能开关控制)' },
   { token: '{{itemlog_block}}', desc: '近期物品变动(已结算的账)' },
   { token: '{{scenes_block}}', desc: '已知地点清单(避免重复记录)' },
   { token: '{{npcs_block}}', desc: '已登场的 NPC 名册(避免重复记录)' },
@@ -596,6 +601,7 @@ export const JAILBREAK_PROMPT = (() => {
 })();
 
 interface BuildArgs {
+  skills?: SkillDelta[];
   user: string;
   char: string;
   time: string;
@@ -653,6 +659,25 @@ export function fmtItems(items: BuildArgs['items']): string {
     .join('\n');
 }
 
+/** 各模型入口共用开关，关闭后连空清单占位也不发送。 */
+export function fmtSkills(skills: SkillDelta[]): string {
+  if (!apiSettings.skillsEnabled) return '';
+  return skills.length
+    ? skills.map(s => `  - ${oneLine(s.name)}${oneLine(s.desc) ? ` —— ${oneLine(s.desc)}` : ''}`).join('\n')
+    : '  (无)';
+}
+
+const SKILLS_FIELD = `"skills": { "add": [{ "name": "技能名", "desc": "效果、等级及限制" }], "update": [{ "name": "已有技能原名", "desc": "更新后的完整说明" }], "remove": ["明确失去的技能原名"] }`;
+
+const SKILLS_RULE = `【技能规则】
+最终 JSON 根对象可按需增加 ${SKILLS_FIELD}。stateChanges 也允许列出 "skills"，只列实际输出的字段。
+skills 只记录主角已经明确掌握的技能、法术、功法或能力，不把物品、临时增益、学习计划或他人技能当成主角技能。不从职业、一次动作或世界常识推测技能，不虚构等级、效果、消耗或冷却。
+首次明确掌握用 add，升级或效果改变用 update，明确遗忘或永久失去用 remove；仅使用技能不代表遗忘或消耗技能，无变化省略。匹配已有技能原名，描述保留仍有效的效果与使用限制。
+主要角色的技能单独写在 npcs.add/update 条目的 skills 字符串中，包含该角色目前全部已知技能及简述；不混入主角 skills 清单，不为记录技能降低 NPC 准入门槛。新标记 important:true 的角色也可同步填写。
+NPC skills 省略=保持，空字符串=明确清空；更新时保留未变的已知技能，不因本楼没用到、离场或时间跳跃删除或推演新技能。`;
+
+const SKILL_FACT_PRESERVATION = '【技能事实保留】保留会影响后续剧情的技能习得、升级、明确失去及关键限制，明确所属人物、证据来源和确定程度；不从职业或动作推断新技能，不把使用技能写成技能消失。仅按本任务输出摘要，不额外输出技能状态增量。';
+
 /** 主角当前客观档案。字段始终全量展示,不参与 NPC 的在场分档。年龄显示带锚点(勿再重复记录)。 */
 export function fmtProtagonist(protagonist: MemProtagonist): string {
   const age = protagonist.age
@@ -701,7 +726,7 @@ export function fmtScenes(scenes: BuildArgs['scenes']): string {
  * 性格/外貌仍不进(够识别复用即可,省 token)。空则「(无)」。
  */
 export function fmtNpcs(npcs: BuildArgs['npcs']): string {
-  return fmtNpcSummaryList(npcs);
+  return fmtNpcSummaryList(npcs, apiSettings.skillsEnabled);
 }
 
 /**
@@ -964,6 +989,10 @@ export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string
     state_time: a.time || '(未知)',
     state_location: a.location || '(未知)',
     protagonist_block: fmtProtagonist(a.protagonist),
+    skills_block: fmtSkills(a.skills ?? []),
+    skills_state_block: apiSettings.skillsEnabled ? `- 主角已掌握技能(本轮之前，只读参考):\n${fmtSkills(a.skills ?? [])}\n` : '',
+    skills_field: apiSettings.skillsEnabled ? `,\n  ${SKILLS_FIELD}` : '',
+    skills_rule: apiSettings.skillsEnabled ? SKILLS_RULE : '',
     items_block: fmtItems(a.items),
     itemlog_block: fmtItemLog(a.itemLog),
     scenes_block: fmtScenes(a.scenes),
@@ -997,6 +1026,7 @@ export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string
   const prompt = fill(custom, macros);
   const supplements = [PROTAGONIST_PROTOCOL_SUPPLEMENT, RULE_ABSOLUTE_TIME_LANGUAGE, SCENE_FOCUS_PROTOCOL_SUPPLEMENT];
   supplements.push(LIFE_DETAILS_PROTOCOL_SUPPLEMENT);
+  if (apiSettings.skillsEnabled && !prompt.includes('【技能规则】')) supplements.push(SKILLS_RULE);
   if (!prompt.includes('【内心好感与外在态度规则】')) supplements.push(RULE_NPC_AFFINITY);
   // 关系线保留:自定义模板未带入时补上,保证慢热互动不在摘要/压缩里被删空(与内置模板同源)
   if (!prompt.includes('【关系线保留】')) supplements.push(RULE_RELATION_MOMENTUM);
@@ -1009,7 +1039,8 @@ export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string
     system: fill(supplements.join('\n\n'), macros),
     user: `${prompt}\n\n【主角当前档案(本轮之前,只读参考)】\n${macros.protagonist_block}`
       + (prompt.includes(macros.npcs_block) ? '' : `\n\n【已登场NPC(本轮之前,好感估计只作基线,不重复结算)】\n${macros.npcs_block}`)
-      + (prompt.includes(macros.lifedetails_block.trim()) ? '' : `\n\n${macros.lifedetails_block}`),
+      + (prompt.includes(macros.lifedetails_block.trim()) ? '' : `\n\n${macros.lifedetails_block}`)
+      + (apiSettings.skillsEnabled && !prompt.includes(macros.skills_state_block.trim()) ? `\n\n${macros.skills_state_block}` : ''),
   };
 }
 
@@ -1061,7 +1092,7 @@ export function buildBatchSummaryPrompt(a: BatchBuildArgs): { system: string; us
     floor_count: String(a.floorCount),
     summary_words: currentVerbosity().summaryWords,
   };
-  return { system: fill(BATCH_SUMMARY_RULES, macros), user: fill(BATCH_SUMMARY_INPUT, macros) };
+  return { system: fill(BATCH_SUMMARY_RULES, macros) + (apiSettings.skillsEnabled ? `\n\n${SKILL_FACT_PRESERVATION}` : ''), user: fill(BATCH_SUMMARY_INPUT, macros) };
 }
 
 /** 填充批量思考清单里的 {{floor_count}} 宏。 */
@@ -1107,11 +1138,12 @@ export function buildResummaryPrompt(
   };
   if (custom && custom !== builtin.trim()) {
     const supplements = [RULE_ABSOLUTE_TIME_LANGUAGE];
+    if (apiSettings.skillsEnabled) supplements.push(SKILL_FACT_PRESERVATION);
     if (!custom.includes('【关系线保留】')) supplements.push(RULE_RELATION_MOMENTUM);
     return { system: supplements.join('\n\n'), user: fill(custom, macros) };
   }
   return {
-    system: fill(isSecond ? RESUMMARY2_RULES : RESUMMARY_RULES, macros),
+    system: fill(isSecond ? RESUMMARY2_RULES : RESUMMARY_RULES, macros) + (apiSettings.skillsEnabled ? `\n\n${SKILL_FACT_PRESERVATION}` : ''),
     user: fill(isSecond ? RESUMMARY2_INPUT : RESUMMARY_INPUT, macros),
   };
 }
@@ -1164,7 +1196,8 @@ export const THINKING_CHECKLIST = protocolSection('THINKING_CHECKLIST');
 
 /** 与批量清单一样在发送前展开宏,不把占位符留给渠道处理。 */
 export function buildSummaryThinking(user: string): string {
-  return fill(THINKING_CHECKLIST, { user: user || '主角' });
+  return fill(THINKING_CHECKLIST, { user: user || '主角' })
+    + (apiSettings.skillsEnabled ? '\n核对主角技能及主要角色 skills：只记录明确的习得、升级或失去，保持人物归属与仍有效的技能和限制；有变化同步对应增量和 stateChanges。' : '');
 }
 
 /* ============ 向量召回:查询重写(Query Rewrite) ============ */

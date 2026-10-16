@@ -212,6 +212,7 @@ function askRemove(npc: MemNpc) {
 const composerOpen = ref(false);
 const nameInput = ref<HTMLInputElement | null>(null);
 interface NpcDraft {
+  skills: string;
   name: string;
   gender: string;
   age: string;
@@ -230,7 +231,7 @@ interface NpcDraft {
   location: string;
 }
 function emptyDraft(): NpcDraft {
-  return { name: '', gender: '', age: '', relation: '', affinityInner: '', affinityOuter: '', affinityNote: '', ties: '', title: '', personality: '', desc: '', outfit: '', condition: '', important: false, follow: false, location: memory.state.location || '' };
+  return { skills: '', name: '', gender: '', age: '', relation: '', affinityInner: '', affinityOuter: '', affinityNote: '', ties: '', title: '', personality: '', desc: '', outfit: '', condition: '', important: false, follow: false, location: memory.state.location || '' };
 }
 const draft = ref<NpcDraft>(emptyDraft());
 
@@ -260,6 +261,7 @@ function addNpc() {
     desc: d.desc,
     outfit: d.outfit,
     condition: d.condition,
+    skills: apiSettings.skillsEnabled && d.important ? d.skills : undefined,
     important: d.important,
     follow: d.follow,
     location: d.follow ? '' : d.location,
@@ -277,6 +279,7 @@ const editing = ref<NpcEditing | null>(null);
 function openEdit(npc: MemNpc) {
   editing.value = {
     oldName: npc.name,
+    skills: npc.skills ?? '',
     name: npc.name,
     gender: npc.gender ?? '',
     age: npc.age ?? '',
@@ -315,6 +318,7 @@ function saveEdit() {
     desc: e.desc,
     outfit: e.outfit,
     condition: e.condition,
+    skills: apiSettings.skillsEnabled && e.important ? e.skills : undefined,
     important: e.important,
     follow: e.follow,
     location: e.follow ? '' : e.location,
@@ -473,7 +477,7 @@ function confirmRemove() {
                   <button class="bbs-item-act bbs-item-del" type="button" title="删除" @click="askRemove(n)"><Icon name="trash" /></button>
                 </span>
               </div>
-              <dl v-if="n.title || n.relation || fmtNpcAffinity(n) || n.outfit || n.condition || n.follow || n.location" class="bbs-npc-fields">
+              <dl v-if="n.title || n.relation || fmtNpcAffinity(n) || n.outfit || n.condition || n.follow || n.location || apiSettings.skillsEnabled" class="bbs-npc-fields">
                 <div v-if="n.title" class="bbs-npc-field f-title"><dt>身份</dt><dd>{{ n.title }}</dd></div>
                 <div v-if="n.relation" class="bbs-npc-field f-rel"><dt>关系</dt><dd>{{ n.relation }}</dd></div>
                 <div v-if="fmtNpcAffinity(n)" class="bbs-npc-field"><dt title="对主角的内心好感与外在态度估计">好感</dt><dd>{{ fmtNpcAffinity(n) }}</dd></div>
@@ -483,6 +487,7 @@ function confirmRemove() {
                 </div>
                 <div v-if="n.outfit" class="bbs-npc-field f-outfit"><dt>着装</dt><dd>{{ n.outfit }}</dd></div>
                 <div v-if="n.condition" class="bbs-npc-field f-cond"><dt>状态</dt><dd>{{ n.condition }}</dd></div>
+                <div v-if="apiSettings.skillsEnabled" class="bbs-npc-field"><dt>技能</dt><dd class="bbs-npc-skills">{{ n.skills || '尚未记录，可编辑补充' }}</dd></div>
               </dl>
               <p v-else class="bbs-npc-mainhint">尚无状态记录 —— 编辑可补充当前着装 / 状态 / 所在。</p>
             </div>
@@ -783,6 +788,10 @@ function confirmRemove() {
             {{ apiSettings.summaryOnlyMode ? '主要角色(核心主演,仅在柏宝书内重点追踪状态)' : '主要角色(核心主演,始终全量发送、重点追踪状态)' }}
           </span>
         </label>
+        <label v-if="apiSettings.skillsEnabled && draft.important" class="bbs-modal-field">
+          <span class="bbs-modal-label">角色技能</span>
+          <textarea v-model="draft.skills" v-autosize class="bbs-input bbs-modal-textarea" rows="3" placeholder="已掌握的技能、效果及限制"></textarea>
+        </label>
         <label class="bbs-modal-field bbs-modal-check">
           <input v-model="draft.follow" type="checkbox" class="bbs-checkbox" />
           <span class="bbs-modal-label">随行同伴(跟随主角移动,永远在场)</span>
@@ -859,6 +868,10 @@ function confirmRemove() {
             {{ apiSettings.summaryOnlyMode ? '主要角色(核心主演,仅在柏宝书内重点追踪状态)' : '主要角色(核心主演,始终全量发送、重点追踪状态)' }}
           </span>
         </label>
+        <label v-if="apiSettings.skillsEnabled && editing.important" class="bbs-modal-field">
+          <span class="bbs-modal-label">角色技能</span>
+          <textarea v-model="editing.skills" v-autosize class="bbs-input bbs-modal-textarea" rows="3" placeholder="已掌握的技能、效果及限制；留空可清除"></textarea>
+        </label>
         <label class="bbs-modal-field bbs-modal-check">
           <input v-model="editing.follow" type="checkbox" class="bbs-checkbox" />
           <span class="bbs-modal-label">随行同伴(跟随主角移动,永远在场)</span>
@@ -890,6 +903,7 @@ function confirmRemove() {
 </template>
 
 <style scoped>
+.bbs-npc-skills { white-space: pre-wrap; overflow-wrap: anywhere; }
 .bbs-page {
   height: 100%;
   display: flex;

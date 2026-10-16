@@ -31,14 +31,17 @@ import dataWrappersRaw from './prompts/data-wrappers.txt?raw';
 
 const originalPrompts = { ...apiSettings.prompts };
 const originalVerbosity = apiSettings.verbosity;
+const originalSkillsEnabled = apiSettings.skillsEnabled;
 
 beforeEach(() => {
+  apiSettings.skillsEnabled = false;
   Object.assign(apiSettings.prompts, { summary: '', resummary: '', resummary2: '' });
 });
 
 afterEach(() => {
   Object.assign(apiSettings.prompts, originalPrompts);
   apiSettings.verbosity = originalVerbosity;
+  apiSettings.skillsEnabled = originalSkillsEnabled;
 });
 
 const args: Parameters<typeof buildSummaryPrompt>[0] = {
@@ -66,6 +69,38 @@ const args: Parameters<typeof buildSummaryPrompt>[0] = {
 function combined(parts: ReturnType<typeof buildSummaryPrompt>): string {
   return `${parts.system}\n\n${parts.user}`;
 }
+
+describe('技能提示词开关', () => {
+  const skillArgs = {
+    ...args,
+    skills: [{ name: '星火术', desc: '消耗三点法力，照亮道路' }],
+    npcs: [{ name: '旅伴', important: true, skills: '霜盾：抵挡一次攻击' }],
+  };
+  it.each(['', 'CUSTOM {{content}}', '{{skills_block}}\n{{skills_state_block}}\n{{skills_field}}\n{{skills_rule}}\n{{npcs_block}}'])('内置和自定义摘要仅在开启时添加技能：%s', template => {
+    apiSettings.prompts.summary = template;
+    const disabled = combined(buildSummaryPrompt(skillArgs)) + buildSummaryThinking(args.user);
+    expect(disabled).not.toMatch(/星火术|霜盾|【技能规则】|"skills"/);
+    apiSettings.skillsEnabled = true;
+    const enabled = combined(buildSummaryPrompt(skillArgs)) + buildSummaryThinking(args.user);
+    expect(enabled).toContain('星火术');
+    expect(enabled).toContain('霜盾');
+    expect(enabled).toContain('【技能规则】');
+    expect(enabled).toContain('不因本楼没用到');
+    expect(enabled).not.toMatch(/\{\{\w+\}\}/);
+    apiSettings.skillsEnabled = false;
+    expect(combined(buildSummaryPrompt(skillArgs))).not.toMatch(/星火术|霜盾|【技能规则】|"skills"/);
+  });
+  it('批量、总结和二次总结仅在开启时保留技能事实规则，不改变输出结构', () => {
+    for (const enabled of [false, true]) {
+      apiSettings.skillsEnabled = enabled;
+      const prompts = [buildBatchSummaryPrompt({ ...args, floorCount: 2 }), ...[1, 2].map(level => buildResummaryPrompt({ ...args, level }))];
+      for (const prompt of prompts) {
+        expect(prompt.system.includes('【技能事实保留】')).toBe(enabled);
+        expect(prompt.system).not.toContain('"skills":');
+      }
+    }
+  });
+});
 
 describe('new built-in prompts', () => {
   it('ships the fact-preservation rules (核心集中在破限,正文不再重复携带)', () => {
