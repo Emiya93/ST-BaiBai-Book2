@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '@/api/client';
 import * as settings from '@/api/settings';
 import * as context from '@/st/context';
-import type { STContext, STMessage } from '@/st/context';
+import type { STContext, STMessage, WorldInfoEntry } from '@/st/context';
 import * as notices from '@/st/toast';
 import { batchBackfill, checkResummary, currentSummaryPromise, handleGenerationIntercept, openingPendingFloor, planBatches, summarizeFloor, summarizeSelected } from './engine';
 import { buildBatchThinking, buildResummaryPrompt, buildSummaryThinking, RESUMMARY_THINKING_CHECKLIST, SUMMARY_OUTPUT_PROTOCOL } from './prompts';
@@ -157,6 +157,104 @@ describe('opening generation interception', () => {
     expect(notices.toast).not.toHaveBeenCalled();
     expect(client.requestViaMainApi).toHaveBeenCalledOnce();
     expect(chat[1].extra?.bbs2_leaf?.text).toBe(summary.summary);
+  });
+});
+
+describe('摘要世界书发送范围', () => {
+  const originalSettings = {
+    sendWorldInfo: settings.apiSettings.sendWorldInfo,
+    worldInfoBlueOnly: settings.apiSettings.worldInfoBlueOnly,
+    excludedWorldNames: [...settings.apiSettings.excludedWorldNames],
+    excludedWorldInfoPatterns: [...settings.apiSettings.excludedWorldInfoPatterns],
+    renderWorldInfoTemplates: settings.apiSettings.renderWorldInfoTemplates,
+  };
+
+  beforeEach(() => {
+    Object.assign(settings.apiSettings, {
+      sendWorldInfo: true,
+      worldInfoBlueOnly: false,
+      excludedWorldNames: ['Excluded Book'],
+      excludedWorldInfoPatterns: ['^Excluded'],
+      renderWorldInfoTemplates: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.assign(settings.apiSettings, originalSettings);
+  });
+
+  it.each([false, true])('关闭发送后跳过扫描及模板渲染，摘要照常完成（批量=%s）', async batch => {
+    settings.apiSettings.sendWorldInfo = false;
+    settings.apiSettings.worldInfoBlueOnly = true;
+    useChat([message(true), message()]);
+    const fallback = vi.fn().mockResolvedValue({ worldInfoBefore: 'Unexpected world reference' });
+    vi.mocked(context.getContext)()!.getWorldInfoPrompt = fallback;
+    const template = vi.spyOn(context, 'getEjsTemplate');
+    if (batch) {
+      vi.mocked(client.requestViaMainApi).mockResolvedValue(JSON.stringify({ floors: [summary] }));
+      expect(await batchBackfill({ floors: [1] })).toMatchObject({ done: 1 });
+    } else {
+      await summarizeFloor(1);
+    }
+    expect(context.getCheckWorldInfo).not.toHaveBeenCalled();
+    expect(fallback).not.toHaveBeenCalled();
+    expect(template).not.toHaveBeenCalled();
+    expect(client.requestViaMainApi).toHaveBeenCalledOnce();
+    expect(vi.mocked(client.requestViaMainApi).mock.calls[0][0].some(m => m.content.startsWith('【世界设定'))).toBe(false);
+  });
+
+  it.each([false, true])('仅蓝灯筛选保留顺序、去重及排除规则（批量=%s）', async batch => {
+    settings.apiSettings.worldInfoBlueOnly = true;
+    useChat([message(true), message()]);
+    const entries: WorldInfoEntry[] = [
+      { constant: true, content: 'BLUE_LATE', order: 200 },
+      { constant: false, content: 'GREEN_REFERENCE' },
+      { content: 'UNKNOWN_STRATEGY_REFERENCE' },
+      { constant: true, world: 'Excluded Book', content: 'EXCLUDED_BOOK_REFERENCE' },
+      { constant: true, comment: 'Excluded Rule', content: 'EXCLUDED_RULE_REFERENCE' },
+      { constant: true, content: 'BLUE_EARLY', order: 10 },
+      { constant: true, content: 'BLUE_EARLY', order: 20 },
+    ];
+    const check = vi.fn().mockResolvedValue({
+      allActivatedEntries: batch ? new Map(entries.map((e, i) => [String(i), e])) : new Set(entries),
+    });
+    vi.mocked(context.getCheckWorldInfo).mockResolvedValue(check);
+    if (batch) {
+      vi.mocked(client.requestViaMainApi).mockResolvedValue(JSON.stringify({ floors: [summary] }));
+      expect(await batchBackfill({ floors: [1] })).toMatchObject({ done: 1 });
+    } else {
+      await summarizeFloor(1);
+    }
+    const messages = vi.mocked(client.requestViaMainApi).mock.calls[0][0];
+    const world = messages.find(m => m.content.startsWith('【世界设定'))!.content;
+    expect(world).toContain('BLUE_EARLY\n\nBLUE_LATE');
+    expect(world.match(/BLUE_EARLY/g)).toHaveLength(1);
+    for (const excluded of ['GREEN_REFERENCE', 'UNKNOWN_STRATEGY_REFERENCE', 'EXCLUDED_BOOK_REFERENCE', 'EXCLUDED_RULE_REFERENCE']) {
+      expect(world).not.toContain(excluded);
+    }
+  });
+
+  it('默认模式继续发送蓝灯和绿灯条目', async () => {
+    useChat([message()]);
+    vi.mocked(context.getCheckWorldInfo).mockResolvedValue(vi.fn().mockResolvedValue({ allActivatedEntries: new Set([
+      { constant: true, content: 'BLUE_REFERENCE' },
+      { constant: false, content: 'GREEN_REFERENCE' },
+    ]) }));
+    await summarizeFloor(0);
+    const world = vi.mocked(client.requestViaMainApi).mock.calls[0][0].find(m => m.content.startsWith('【世界设定'))!.content;
+    expect(world).toContain('BLUE_REFERENCE');
+    expect(world).toContain('GREEN_REFERENCE');
+  });
+
+  it.each([false, true])('旧接口无法识别蓝灯时不混发其他条目（仅蓝灯=%s）', async blueOnly => {
+    settings.apiSettings.worldInfoBlueOnly = blueOnly;
+    useChat([message()]);
+    const fallback = vi.fn().mockResolvedValue({ worldInfoBefore: 'LEGACY_WORLD_REFERENCE' });
+    vi.mocked(context.getContext)()!.getWorldInfoPrompt = fallback;
+    await summarizeFloor(0);
+    const messages = vi.mocked(client.requestViaMainApi).mock.calls[0][0];
+    expect(messages.some(m => m.content.includes('LEGACY_WORLD_REFERENCE'))).toBe(!blueOnly);
+    expect(fallback).toHaveBeenCalledTimes(blueOnly ? 0 : 1);
   });
 });
 

@@ -1083,17 +1083,28 @@ function exportPublicApiDocument() {
         <p v-else class="bbs-field-hint">名单为空,所有角色都启用记忆系统。</p>
       </Collapsible>
 
-      <!-- 排除世界书内容 -->
-      <Collapsible title="排除世界书内容" :open="false">
+      <!-- 世界书发送范围与排除名单 -->
+      <Collapsible title="世界书设置" :open="false">
         <p class="bbs-field-hint">
-          摘要 / 总结时会激活世界书当参考。这里可剔除对剧情记忆无用的条目——如全局挂载的附加知识书、
-          规则说明等,既省 token 也避免干扰。仅影响摘要副 API,不改变你主对话里的世界书。
+          控制摘要与批量补摘使用的世界书参考。仅影响柏宝书的摘要请求，不改变主对话里的世界书。
         </p>
+
+        <label class="bbs-switch-row">
+          <span class="bbs-field-label">发送世界书</span>
+          <input v-model="apiSettings.sendWorldInfo" type="checkbox" class="bbs-checkbox" />
+        </label>
+        <p class="bbs-field-hint">默认开启。关闭后不再为摘要扫描、渲染或发送世界书内容，其他摘要材料照常发送。</p>
+
+        <label class="bbs-switch-row">
+          <span class="bbs-field-label">仅发送蓝灯条目</span>
+          <input v-model="apiSettings.worldInfoBlueOnly" type="checkbox" class="bbs-checkbox" :disabled="!apiSettings.sendWorldInfo" />
+        </label>
+        <p class="bbs-field-hint">默认关闭。开启后只保留已激活的蓝灯（常驻）条目，跳过绿灯关键词等其他条目；仍遵守下方的整本排除与条目名过滤。</p>
 
         <!-- 渲染世界书模板:配合「提示词模板(ST-Prompt-Template)」等插件 -->
         <label class="bbs-switch-row">
           <span class="bbs-field-label">渲染世界书模板</span>
-          <input v-model="apiSettings.renderWorldInfoTemplates" type="checkbox" class="bbs-checkbox" />
+          <input v-model="apiSettings.renderWorldInfoTemplates" type="checkbox" class="bbs-checkbox" :disabled="!apiSettings.sendWorldInfo" />
         </label>
         <p class="bbs-field-hint">
           开启后会兼容提示词模板（ejs）的世界书条目
@@ -1116,7 +1127,7 @@ function exportPublicApiDocument() {
             </button>
           </li>
         </ul>
-        <p v-else class="bbs-field-hint">未排除任何世界书,全部激活条目都会进摘要参考。</p>
+        <p v-else class="bbs-field-hint">未排除整本世界书；实际发送范围由上方开关和条目名过滤共同决定。</p>
 
         <hr class="bbs-rule" />
 

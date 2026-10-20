@@ -206,6 +206,8 @@ async function renderWorldInfoContent(content: string, entry?: WorldInfoEntry, f
  * 蓝灯/相关条目可能落在 before、after、depth(@深度)、作者注 任一位置,全部提取。
  */
 async function fetchWorldInfoViaPrompt(scanText: string[], refFloor?: number): Promise<string> {
+  // 旧接口只返回拼接文本，无法识别蓝灯；此模式下省略世界书，避免混入绿灯条目。
+  if (apiSettings.worldInfoBlueOnly) return '';
   const fn = getContext()?.getWorldInfoPrompt;
   if (typeof fn !== 'function') return '';
   const res = await fn(scanText, HUGE_WI_CONTEXT, true);
@@ -277,10 +279,11 @@ function sortWorldInfoEntriesLikeST(entries: WorldInfoEntry[]): WorldInfoEntry[]
  * 按本轮待摘文本激活世界书条目(关键词触发 + constant 蓝灯),过滤后返回设定文本。
  * 优先走 checkWorldInfo:它返回**条目对象**(带 world/comment),据此按「整本排除」+「条目名规则」
  * 过滤掉不需要的条目(如全局挂载的附加知识书)。激活逻辑(扫描深度/递归/预算)全在其内部,不碰。
- * checkWorldInfo 取不到(旧版/路径变动)→ 降级到 getWorldInfoPrompt(不过滤,但摘要照常带书,不崩)。
+ * checkWorldInfo 取不到时，普通模式降级到 getWorldInfoPrompt；仅蓝灯模式省略世界书，避免无法筛选时混发。
  * 无激活条目 / 角色卡无世界书 / 出错 → 返回空串(不影响摘要正常运行)。
  */
 async function fetchWorldInfo(chat: STMessage[], targets: number[], name1: string, name2: string): Promise<string> {
+  if (!apiSettings.sendWorldInfo) return '';
   const scanText = buildScanText(chat, targets, name1, name2);
   if (!scanText.length) return '';
   // 变量时点代表楼:取本批**最后一个 target 楼**(= 这段剧情结束时的状态,与「总结这段发生了什么」最匹配)。
@@ -301,7 +304,7 @@ async function fetchWorldInfo(chat: STMessage[], targets: number[], name1: strin
     // 逐条渲染(展宏 + 执行 EJS),让「按好感度切换人设」等动态条目拿到成品而非原文;变量按 refFloor 取历史值
     const chunks = await Promise.all(
       entries
-        .filter(e => e && !isWorldInfoEntryExcluded(e))
+        .filter(e => e && (!apiSettings.worldInfoBlueOnly || e.constant === true) && !isWorldInfoEntryExcluded(e))
         .map(e => renderWorldInfoContent(typeof e.content === 'string' ? e.content : '', e, refFloor)),
     );
     return joinWorldInfoChunks(chunks);

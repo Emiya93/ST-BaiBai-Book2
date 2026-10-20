@@ -53,6 +53,8 @@ describe('改版设置首次继承', () => {
     isolated.hydrateSettings();
     expect(isolated.apiSettings.skillsEnabled).toBe(scenario !== 'existing');
     expect(isolated.apiSettings.injection.skills).toBe(scenario !== 'existing');
+    expect(isolated.apiSettings.sendWorldInfo).toBe(true);
+    expect(isolated.apiSettings.worldInfoBlueOnly).toBe(false);
     if (scenario === 'original' || scenario === 'legacy-local') {
       expect(isolated.apiSettings.keepRecent).toBe(7);
       expect(isolated.apiSettings.channels[0]).toMatchObject(channel);
@@ -67,6 +69,29 @@ describe('改版设置首次继承', () => {
     expect(JSON.stringify(extensionSettings.baibai_api_channels)).toBe(originalChannels);
     if (scenario === 'legacy-local') expect(local.get('bbs.api.v1')).toBe(JSON.stringify(source));
     expect(extensionSettings.baibai_book2).toBeTruthy();
+  });
+
+  it.each([
+    [false, true, false, true],
+    [true, false, true, false],
+    ['false', 1, true, false],
+  ])('世界书开关载入时校验布尔值，并独立保存关闭与仅蓝灯的选择：%s / %s', async (send, blueOnly, expectedSend, expectedBlueOnly) => {
+    vi.resetModules();
+    const extensionSettings = { baibai_book2: { sendWorldInfo: send, worldInfoBlueOnly: blueOnly, wiPatternsSeeded: true } };
+    const save = vi.fn();
+    vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn() });
+    vi.stubGlobal('window', { addEventListener: vi.fn(), dispatchEvent: vi.fn() });
+    vi.doMock('@/st/context', () => ({ getContext: () => ({ extensionSettings, saveSettingsDebounced: save }) }));
+    const isolated = await import('./settings');
+    isolated.hydrateSettings();
+    expect(isolated.apiSettings.sendWorldInfo).toBe(expectedSend);
+    expect(isolated.apiSettings.worldInfoBlueOnly).toBe(expectedBlueOnly);
+    isolated.apiSettings.sendWorldInfo = false;
+    isolated.apiSettings.worldInfoBlueOnly = true;
+    const { nextTick } = await import('vue');
+    await nextTick();
+    expect(extensionSettings.baibai_book2).toMatchObject({ sendWorldInfo: false, worldInfoBlueOnly: true });
+    expect(save).toHaveBeenCalled();
   });
 });
 

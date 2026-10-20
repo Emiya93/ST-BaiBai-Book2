@@ -288,16 +288,18 @@ describe('jailbreak, briefing and query rewrite', () => {
     expect(MEMORY_BRIEFING_END).toContain('不要模仿压缩记录的句式');
   });
 
-  it('资料包装与 09 原文逐字一致(仅把占位换成实际资料)', () => {
+  it('资料包装保留 09 原文内容与段落（忽略 CRLF/LF 差异）', () => {
+    // 模板文件可能被 Git 检出为 CRLF，拼接分隔符使用 LF；只统一换行，仍严格比较文字、空格与段落。
+    const normalizeNewlines = (text: string) => text.replace(/\r\n/g, '\n');
     const section = (placeholder: string, sentinel: string) =>
       dataWrappersRaw
         .replace(placeholder, sentinel)
         .split(/\n\s*\n(?=【)/)
         .find(b => b.includes(sentinel))!
         .trim();
-    expect(buildPersonaSystem('SENT')).toBe(section('〔主角设定占位〕', 'SENT'));
-    expect(buildWorldInfoSystem('SENT')).toBe(section('〔世界书内容占位〕', 'SENT'));
-    expect(buildCharCardSystem('SENT')).toBe(section('〔角色卡内容占位〕', 'SENT'));
+    expect(normalizeNewlines(buildPersonaSystem('SENT'))).toBe(normalizeNewlines(section('〔主角设定占位〕', 'SENT')));
+    expect(normalizeNewlines(buildWorldInfoSystem('SENT'))).toBe(normalizeNewlines(section('〔世界书内容占位〕', 'SENT')));
+    expect(normalizeNewlines(buildCharCardSystem('SENT'))).toBe(normalizeNewlines(section('〔角色卡内容占位〕', 'SENT')));
   });
 
   it('keeps the original 5-query rewrite prompt (复刻 Horae 的用户优化版)', () => {

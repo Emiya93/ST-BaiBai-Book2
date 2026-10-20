@@ -240,6 +240,8 @@ export interface WorldInfoEntry {
   comment?: string;
   /** 条目正文 */
   content?: string;
+  /** 蓝灯常驻标记，用于摘要仅发送蓝灯条目的筛选。 */
+  constant?: boolean;
   /** 插入顺序(Order)。ST 拼提示词时同位置条目按它升序排列;缺省视为 100(ST 新建条目默认值) */
   order?: number;
   /** 插入位置:0 角色前 / 1 角色后 / 2 作者注前 / 3 作者注后 / 4 @深度 / 5 EM上 / 6 EM下 / 7 出口;缺省视为 0 */
