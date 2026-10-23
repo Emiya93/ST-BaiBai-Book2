@@ -76,6 +76,16 @@ describe('技能提示词开关', () => {
     skills: [{ name: '星火术', desc: '消耗三点法力，照亮道路' }],
     npcs: [{ name: '旅伴', important: true, skills: '霜盾：抵挡一次攻击' }],
   };
+  it.each(['', 'CUSTOM {{content}}', '【技能规则】desc 记录本轮技能的施展经过。\n{{content}}'])('内置和旧自定义模板都要求技能描述能力作用：%s', template => {
+    apiSettings.skillsEnabled = true;
+    apiSettings.prompts.summary = template;
+    const prompt = buildSummaryPrompt(skillArgs);
+    expect(prompt.system).toContain('主角技能的 desc 与 NPC skills');
+    expect(prompt.system).toContain('这个技能有什么作用');
+    expect(prompt.system).toContain('不记某次施展的时间、地点、对手、战果');
+    expect(prompt.system).toContain('旧描述若混入剧情履历，用 update');
+    expect(buildSummaryThinking(args.user)).toContain('描述只写技能本身的作用、效果和限制');
+  });
   it.each(['', 'CUSTOM {{content}}', '【技能规则】首次明确掌握用 add，没有习得事件就不更新。\n{{content}}'])('内置及已保存自定义模板允许补录明确展现的既有技能：%s', template => {
     apiSettings.skillsEnabled = true;
     apiSettings.prompts.summary = template;
@@ -122,6 +132,27 @@ describe('技能提示词开关', () => {
         expect(prompt.system).not.toContain('"skills":');
       }
     }
+  });
+});
+
+describe('角色当前状态提示词', () => {
+  it.each(['', 'CUSTOM {{content}}，condition 追加历史状态。'])('内置和旧自定义模板都要求清除历史、仅保留有效状态：%s', template => {
+    apiSettings.prompts.summary = template;
+    const prompt = buildSummaryPrompt(args);
+    expect(prompt.system).toContain('【角色当前状态规则】');
+    expect(prompt.system).toContain('本段结束时仍然有效');
+    expect(prompt.system).toContain('已解除、被新状态取代的内容必须删除');
+    expect(prompt.system).toContain('旧字段中“曾受伤”“已治愈”');
+    expect(prompt.system).toContain('仍有效的其他伤势和限制保留');
+    expect(prompt.system).toContain('历史受伤、治疗及恢复经过写入 summary');
+    expect(buildSummaryThinking(args.user)).toContain('删除已解除或被取代的片段');
+    expect(combined(prompt)).not.toMatch(/\{\{\w+\}\}/);
+  });
+
+  it('局部协议删除已恢复的状态，不用康复文字占位', () => {
+    expect(CONDITION_PATCH_PROTOCOL).toContain('不用康复文字占位');
+    expect(CONDITION_PATCH_PROTOCOL).toContain('旧记录已明确标为已恢复的纯历史片段也用 replace 清除');
+    expect(CONDITION_PATCH_PROTOCOL).toContain('混合片段只保留当前仍有效的部分');
   });
 });
 

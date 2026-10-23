@@ -219,6 +219,13 @@ export const RULE_SCENES = `═══ 【场景/地点规则】(scenes 字段,�
   ✦ locationPath 是 location 对应到【已知地点】树里的**那个节点的完整路径**(由粗到细),作精确定位锚点 —— 物品/NPC 的「是否在身边」全靠它判断。
   ✦ location 写得比任何已记录节点都细时(如「302室屋内」而树里只到「302室」),locationPath 就给到**能对上的那一级**(["...","302室"]);location 与某节点同名时,locationPath 就指向它。改了 location 务必同步给 locationPath。`;
 
+/** 主角与 NPC 共用的状态口径；自定义旧模板也必须清理已失效的历史状态。 */
+const RULE_CURRENT_CONDITION = `【角色当前状态规则】
+protagonist.condition、npcs.condition 及 conditionPatch 的 text 只记录本段结束时仍然有效的身体状态、症状和行动限制，不记录经历或变化过程。
+每轮对照旧状态核对：已解除、被新状态取代的内容必须删除；旧字段中“曾受伤”“已治愈”“已恢复正常”“休养结束”等纯历史记录也应清除。仍有效的其他伤势和限制保留，不因本轮没提及就删除。
+局部变化用 replace 将对应片段改成当前仍有效的内容；某项已完全恢复则 text 写空字符串删除该项，不替换成“已痊愈/恢复正常”。全部异常解除时清空全部旧片段，最终状态为空；不要保留康复履历。没有旧状态时按需直接写 condition。
+例如“左肩中箭；疲惫”，正文明确左肩已痊愈且仍疲惫，当前只留“疲惫”；不要写“左肩中箭后已痊愈；疲惫”。历史受伤、治疗及恢复经过写入 summary，不能留在当前状态中。删除纯历史文字无需再证明一次康复；尚未解除的真实伤势仍须有本轮变化证据才更新，时间流逝、未提及或闪回不等于恢复。`;
+
 /** 用户操控主角的客观当前档案规则。 */
 export const RULE_PROTAGONIST = `═══ 【主角当前档案规则】(protagonist 字段,覆盖型) ═══
 这是 {{user}} 本人的当前客观档案,与 NPC 名册分开。只在【本轮对话】明确揭示或改变了会影响后续续写的信息时输出:
@@ -670,12 +677,13 @@ export function fmtSkills(skills: SkillDelta[]): string {
     : '  (无)';
 }
 
-const SKILLS_FIELD = `"skills": { "add": [{ "name": "技能名", "desc": "效果、等级及限制" }], "update": [{ "name": "已有技能原名", "desc": "更新后的完整说明" }], "remove": ["明确失去的技能原名"] }`;
+const SKILLS_FIELD = `"skills": { "add": [{ "name": "技能名", "desc": "技能本身的作用、效果及已知使用限制" }], "update": [{ "name": "已有技能原名", "desc": "更新后的完整能力说明，不写施展经过" }], "remove": ["明确失去的技能原名"] }`;
 
 const SKILLS_RULE = `【技能规则】
 最终 JSON 根对象可按需增加 ${SKILLS_FIELD}。stateChanges 也允许列出 "skills"，只列实际输出的字段。
 skills 记录主角有明确证据掌握的技能、法术、功法或能力，包含新学会及原本就会但尚未登记的技能。本轮正文、明确人物设定说明其本来就会或过去学过，或本人实际施展了可辨识的技能，都可作为补录依据；不要求出现“学会”“领悟”等字样，也不要求本轮刚获得技能。首次见到使用记录不等于本轮新学会，summary 应如实描述使用或揭示已有能力。
 先对照技能台账：台账中缺少的已有技能也用 add；已有技能首次明确展示新的效果、用途或限制，或确有升级、效果变化时用 update；明确遗忘或永久失去才用 remove。已登记且无新信息的普通使用省略，不重复添加。匹配已有技能原名，更新描述保留仍有效的效果与使用限制。
+【技能描述口径】主角技能的 desc 与 NPC skills 中每项技能的简述都写“这个技能有什么作用”：概括有依据的能力、作用对象、效果、适用范围及已知消耗/限制；已知等级可保留，未知信息省略。不写“这个技能在剧情中做了什么”，不记某次施展的时间、地点、对手、战果、习得或使用经过；这些事件归 summary。施展记录只作为确认能力的证据，再提炼成能力说明，不把单次战果泛化为必然效果。例如正文“他用星火术照亮地窖并找到钥匙”，desc 写“产生火光，可用于照明”，不写“照亮地窖并找到了钥匙”。旧描述若混入剧情履历，用 update 改为有依据的完整能力说明，保留仍有效的效果与限制。
 不把物品、借助道具的临时效果、临时增益、学习计划、旁观他人施术或尚未成功的练习当成本人已经掌握。不从职业、普通动作或世界常识自行发明技能，不虚构名字、等级、效果、消耗或冷却；一次有明确归属的实际施展可以证明已展现的能力，普通挥拳、奔跑等动作不能据此另造技能。完成更复杂目标失败，不否认已经明确施展的基础技能；只记录证实的能力范围。
 主要角色同样适用补录规则，技能单独写在 npcs.add/update 条目的 skills 字符串中，包含该角色目前全部已知技能及简述；不混入主角 skills 清单，不为记录技能降低 NPC 准入门槛。新标记 important:true 的角色也可同步填写。
 NPC skills 省略=保持，空字符串=明确清空；更新时保留未变的已知技能，不因本楼没用到、离场或时间跳跃删除或推演新技能。`;
@@ -999,6 +1007,7 @@ export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string
     skills_state_block: apiSettings.skillsEnabled ? `- 主角已掌握技能(本轮之前，只读参考):\n${fmtSkills(a.skills ?? [])}\n` : '',
     skills_field: apiSettings.skillsEnabled ? `,\n  ${SKILLS_FIELD}` : '',
     skills_rule: apiSettings.skillsEnabled ? SKILLS_RULE : '',
+    current_condition_rule: RULE_CURRENT_CONDITION,
     state_changes_json: stateChangeFields.map(field => JSON.stringify(field)).join(', '),
     state_changes_names: stateChangeFields.join('、'),
     items_block: fmtItems(a.items),
@@ -1032,7 +1041,7 @@ export function buildSummaryPrompt(a: BuildArgs): { system: string; user: string
     return { system: fill(SUMMARY_RULES, macros), user: fill(SUMMARY_INPUT, macros) };
   }
   const prompt = fill(custom, macros);
-  const supplements = [PROTAGONIST_PROTOCOL_SUPPLEMENT, RULE_ABSOLUTE_TIME_LANGUAGE, SCENE_FOCUS_PROTOCOL_SUPPLEMENT];
+  const supplements = [PROTAGONIST_PROTOCOL_SUPPLEMENT, RULE_CURRENT_CONDITION, RULE_ABSOLUTE_TIME_LANGUAGE, SCENE_FOCUS_PROTOCOL_SUPPLEMENT];
   supplements.push(LIFE_DETAILS_PROTOCOL_SUPPLEMENT);
   // 已保存模板可能含旧技能规则；只有完整包含现行协议时才省略补充，避免旧门槛继续阻止补录。
   if (apiSettings.skillsEnabled && !prompt.includes(SKILLS_RULE)) supplements.push(SKILLS_RULE);
@@ -1206,7 +1215,8 @@ export const THINKING_CHECKLIST = protocolSection('THINKING_CHECKLIST');
 /** 与批量清单一样在发送前展开宏,不把占位符留给渠道处理。 */
 export function buildSummaryThinking(user: string): string {
   return fill(THINKING_CHECKLIST, { user: user || '主角' })
-    + (apiSettings.skillsEnabled ? '\n核对主角技能及主要角色 skills：检查本轮明确说明或实际施展、已掌握但未登记的技能并补录，不等待“学会”字样；区分已有能力首次展现与本轮新习得。新确认效果、升级或明确失去时更新，保持人物归属与仍有效的技能和限制；有记录变化同步对应增量和 stateChanges。' : '');
+    + '\n核对主角和 NPC 当前状态：只留本段结束时仍有效的状态，删除已解除或被取代的片段；清除旧字段中的纯历史、已痊愈和恢复过程，不把它们写成新的状态片段。'
+    + (apiSettings.skillsEnabled ? '\n核对主角技能及主要角色 skills：检查本轮明确说明或实际施展、已掌握但未登记的技能并补录，不等待“学会”字样；区分已有能力首次展现与本轮新习得。新确认效果、升级或明确失去时更新，保持人物归属与仍有效的技能和限制；描述只写技能本身的作用、效果和限制，施展经过与战果写入 summary；旧描述混入剧情履历时改写。有记录变化同步对应增量和 stateChanges。' : '');
 }
 
 /* ============ 向量召回:查询重写(Query Rewrite) ============ */

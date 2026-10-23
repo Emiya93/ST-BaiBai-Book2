@@ -40,6 +40,20 @@ describe('applyConditionPatch', () => {
   it('全部片段清空后返回 undefined', () => {
     expect(applyConditionPatch('手臂受伤', { replace: [{ id: 'c1', text: '' }] })).toBeUndefined();
   });
+
+  it('同时清除多个旧状态时编号不偏移，顺序不影响结果', () => {
+    const replace = [{ id: 'c1', text: '' }, { id: 'c2', text: '' }, { id: 'c3', text: '' }];
+    for (const ops of [replace, [...replace].reverse()]) {
+      expect(applyConditionPatch('手臂受伤；疲惫；醉酒', { replace: ops })).toBeUndefined();
+    }
+  });
+
+  it('清除历史与已解除状态后，仍能按原编号更新未解除状态', () => {
+    expect(applyConditionPatch('曾中毒，已治愈；醉酒；左肩疼痛；疲惫', {
+      replace: [{ id: 'c1', text: '' }, { id: 'c2', text: '' }, { id: 'c3', text: '左肩轻微疼痛' }],
+      add: [{ text: '脚踝扭伤' }],
+    })).toBe('左肩轻微疼痛；疲惫；脚踝扭伤');
+  });
 });
 
 describe('conditionPatch 经重放生效', () => {
@@ -60,6 +74,22 @@ describe('conditionPatch 经重放生效', () => {
     const derived = deriveMemory(chat);
     const npc = derived.npcs.find(n => n.name === '艾琳');
     expect(npc?.condition).toBe('左肩中箭；已能轻微拉弓');
+  });
+
+  it('主角和 NPC 全部恢复后，重放不再显示旧状态或康复履历', () => {
+    const clear = { replace: [{ id: 'c1', text: '' }, { id: 'c2', text: '' }] };
+    const derived = deriveMemory([
+      message({
+        protagonist: { condition: '手臂受伤；疲惫' },
+        npcs: { add: [{ name: '艾琳', condition: '醉酒；曾中毒，已治愈' }] },
+      }),
+      message(finalizeDelta({
+        protagonist: { conditionPatch: clear },
+        npcs: { update: [{ name: '艾琳', conditionPatch: clear }] },
+      }, [])),
+    ]);
+    expect(derived.protagonist.condition).toBeUndefined();
+    expect(derived.npcs[0].condition).toBeUndefined();
   });
 });
 

@@ -60,14 +60,14 @@ export function applyConditionPatch(
     const idx = Number(m[1]) - 1;
     if (idx < 0 || idx >= next.length) continue;
     const text = op.text.trim();
-    if (!text) next.splice(idx, 1);
-    else next[idx] = text;
+    // 编号始终对应请求中的原片段；删除先留空位，避免后续编号偏移、漏清旧状态。
+    next[idx] = text;
   }
   for (const op of patch.add ?? []) {
     const text = op.text.trim();
     if (text) next.push(text);
   }
-  const joined = next.join(CONDITION_FRAGMENT_SEP).trim();
+  const joined = next.filter(Boolean).join(CONDITION_FRAGMENT_SEP).trim();
   return joined || undefined;
 }
 
